@@ -5,17 +5,13 @@
 | CP | Status | Scope |
 |----|--------|--------|
 | CP0–CP7 | done | Shell → platform → undo → shortcuts/import |
-| CP8 | done | Multi-project registry, agent session API, file-tail attach, fs watch stubs |
-| CP9 | next | Native fs notify, stdio agent process, session graph auto-map |
+| CP8 | done | Multi-project, agent session API, file-tail, fs watch stubs |
+| CP9 | in progress | Live session mode, auto-map unknown tools/files onto graph |
+| CP10 | later | Native fs notify, stdio agent process |
 
-## CP8 notes
+## Host verification (sandbox Vite)
 
-- `src/agent/` — `AgentRuntime` with **demo** and **file-tail** transports
-- Runtime: Run demo uses session store; Import → **Attach tail** polls a jsonl path
-- `platform.watchPath` — poll-based on web + tauri (native notify later)
-- Files → **Projects**: new / switch / delete; registry in localStorage
-
-## Verified on host (sandbox)
-
-- Vite boots after transcript/samples syntax fixes
-- Graph + Run demo event stream + Help overlay
+- Graph boots; Run demo via session store streams events (`demo · running`)
+- Cascade window positions leave Graph visible under Runtime
+- Files → Projects: Save + registry list works
+- Virtual tree includes `sessions/`
