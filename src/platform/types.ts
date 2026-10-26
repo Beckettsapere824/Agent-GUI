@@ -22,16 +22,23 @@ export interface RunCommandResult {
   durationMs: number;
 }
 
+export type FsWatchEvent = {
+  path: string;
+  kind: "create" | "modify" | "remove" | "unknown";
+};
+
 export interface Platform {
   kind: HostKind;
   hostInfo(): Promise<HostInfo>;
-  /** List directory relative to workspace root, or absolute when allowed. */
   listDir(path: string): Promise<DirEntry[]>;
   readTextFile(path: string): Promise<string>;
   writeTextFile(path: string, content: string): Promise<void>;
-  /** Best-effort shell; web returns simulated output. */
   runCommand(cmd: string, cwd?: string): Promise<RunCommandResult>;
-  /** Persist opaque project blob (web: localStorage; tauri: app data dir). */
   saveProjectBlob(key: string, json: string): Promise<void>;
   loadProjectBlob(key: string): Promise<string | null>;
+  /**
+   * Best-effort directory/file watch. Web: poll. Tauri: native when available.
+   * Returns unsubscribe.
+   */
+  watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs?: number): () => void;
 }

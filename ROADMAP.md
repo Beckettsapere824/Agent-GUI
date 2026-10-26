@@ -4,21 +4,18 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP6 | done | Shell → platform → undo/layout/SVG/allowlist |
-| CP7 | done | Global shortcuts, help overlay, status bar, session import UX |
-| CP8 | later | Real agent process attach, fs watch, multi-project |
+| CP0–CP7 | done | Shell → platform → undo → shortcuts/import |
+| CP8 | done | Multi-project registry, agent session API, file-tail attach, fs watch stubs |
+| CP9 | next | Native fs notify, stdio agent process, session graph auto-map |
 
-## CP7 notes
+## CP8 notes
 
-- Keys `1–5` open/focus Graph / Harness / Runtime / Files / Shell
-- `?` help overlay · `Ctrl/⌘S` save project · Esc closes help
-- Top status bar: project name, graph size, host kind, live/replay
-- Runtime **Import**: presets, file picker, drag-and-drop JSONL, Load/Replay
+- `src/agent/` — `AgentRuntime` with **demo** and **file-tail** transports
+- Runtime: Run demo uses session store; Import → **Attach tail** polls a jsonl path
+- `platform.watchPath` — poll-based on web + tauri (native notify later)
+- Files → **Projects**: new / switch / delete; registry in localStorage
 
-## Run
+## Verified on host (sandbox)
 
-```bash
-git pull && npm install && npm run dev
-```
-
-Press `?` for shortcuts. Open Runtime → Import → Sample Claude-code → Replay.
+- Vite boots after transcript/samples syntax fixes
+- Graph + Run demo event stream + Help overlay

@@ -7,6 +7,7 @@ import { getPlatform, isTauriRuntime } from "../platform";
 export function FilesPanel() {
   const [filter, setFilter] = useState("");
   const [preview, setPreview] = useState<{ path: string; text: string } | null>(null);
+  const [showProjects, setShowProjects] = useState(false);
 
   const addNode = useGraphStore((s) => s.addNode);
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
@@ -21,17 +22,26 @@ export function FilesPanel() {
   const loadLocal = useProjectStore((s) => s.loadLocal);
   const lastSavedAt = useProjectStore((s) => s.lastSavedAt);
   const exportJson = useProjectStore((s) => s.exportJson);
+  const registry = useProjectStore((s) => s.registry);
+  const refreshRegistry = useProjectStore((s) => s.refreshRegistry);
+  const loadProject = useProjectStore((s) => s.loadProject);
+  const newProject = useProjectStore((s) => s.newProject);
+  const deleteProject = useProjectStore((s) => s.deleteProject);
+  const currentId = useProjectStore((s) => s.id);
 
   const { root, host, entries, loading, error, init, setRoot, refresh, readFile } =
     useWorkspaceStore();
 
   useEffect(() => {
     void init();
-  }, [init]);
+    refreshRegistry();
+  }, [init, refreshRegistry]);
 
   const items = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return entries.filter((t) => !q || t.path.toLowerCase().includes(q) || t.name.toLowerCase().includes(q));
+    return entries.filter(
+      (t) => !q || t.path.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
+    );
   }, [entries, filter]);
 
   const addFileToGraph = (path: string) => {
@@ -73,14 +83,13 @@ export function FilesPanel() {
   };
 
   const onSaveProject = async () => {
-    const ok = saveLocal();
+    saveLocal();
     try {
       const p = await getPlatform();
       await p.saveProjectBlob("project-v1", exportJson());
     } catch {
       /* localStorage path still used */
     }
-    return ok;
   };
 
   return (
@@ -116,7 +125,7 @@ export function FilesPanel() {
           className="h-6 px-2 rounded bg-white/5 text-gray-300 hover:bg-white/10"
           onClick={onExport}
         >
-          Export JSON
+          Export
         </button>
         <button
           className="h-6 px-2 rounded bg-white/5 text-gray-300 hover:bg-white/10"
@@ -124,12 +133,63 @@ export function FilesPanel() {
         >
           Refresh
         </button>
+        <button
+          className={`h-6 px-2 rounded ${
+            showProjects ? "bg-accent/20 text-accent" : "bg-white/5 text-gray-300 hover:bg-white/10"
+          }`}
+          onClick={() => {
+            refreshRegistry();
+            setShowProjects((v) => !v);
+          }}
+        >
+          Projects
+        </button>
         {lastSavedAt && (
           <span className="text-[10px] text-gray-600 ml-auto">
             saved {new Date(lastSavedAt).toLocaleTimeString()}
           </span>
         )}
       </div>
+
+      {showProjects && (
+        <div className="border-b border-border bg-[#0f1115] p-2 space-y-1 max-h-36 overflow-y-auto">
+          <div className="flex gap-1 mb-1">
+            <button
+              className="h-6 px-2 rounded text-[10px] bg-accent/20 text-accent hover:bg-accent/30"
+              onClick={() => newProject(`project-${registry.length + 1}`)}
+            >
+              + New project
+            </button>
+          </div>
+          {registry.length === 0 && (
+            <div className="text-[10px] text-gray-600 px-1">No saved projects yet — Save first</div>
+          )}
+          {registry.map((p) => (
+            <div
+              key={p.id}
+              className={`flex items-center gap-2 px-2 py-1 rounded ${
+                p.id === currentId ? "bg-accent/10 border border-accent/30" : "hover:bg-white/5"
+              }`}
+            >
+              <button
+                className="flex-1 text-left min-w-0"
+                onClick={() => loadProject(p.id)}
+              >
+                <div className="text-gray-200 truncate">{p.name}</div>
+                <div className="text-[10px] text-gray-600">
+                  {new Date(p.updatedAt).toLocaleString()}
+                </div>
+              </button>
+              <button
+                className="text-[10px] text-red-400/80 hover:text-red-400 px-1"
+                onClick={() => deleteProject(p.id)}
+              >
+                del
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="px-2 py-1 border-b border-border flex items-center gap-2 text-[11px]">
         <button className="text-gray-500 hover:text-gray-300" onClick={() => void onUp()} title="Up">

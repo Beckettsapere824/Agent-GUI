@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useActivityStore } from "../store/activityStore";
+import { useSessionStore } from "../store/sessionStore";
 import { parseTranscript } from "./transcript";
 import { SAMPLE_CLAUDE_CODE, SAMPLE_GENERIC } from "./samples";
 
@@ -23,12 +24,17 @@ export function RuntimePanel() {
   const events = useActivityStore((s) => s.events);
   const running = useActivityStore((s) => s.running);
   const mode = useActivityStore((s) => s.mode);
-  const setRunning = useActivityStore((s) => s.setRunning);
   const clear = useActivityStore((s) => s.clear);
   const tick = useActivityStore((s) => s.tick);
-  const startDemoFromTranscript = useActivityStore((s) => s.startDemoFromTranscript);
-  const startReplay = useActivityStore((s) => s.startReplay);
   const loadEvents = useActivityStore((s) => s.loadEvents);
+  const startReplay = useActivityStore((s) => s.startReplay);
+  const setRunning = useActivityStore((s) => s.setRunning);
+
+  const startDemo = useSessionStore((s) => s.startDemo);
+  const stopActive = useSessionStore((s) => s.stopActive);
+  const attachTail = useSessionStore((s) => s.attachTail);
+  const sessions = useSessionStore((s) => s.sessions);
+  const activeId = useSessionStore((s) => s.activeId);
 
   const stopRef = useRef<(() => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -36,6 +42,7 @@ export function RuntimePanel() {
   const [pasteText, setPasteText] = useState("");
   const [parseInfo, setParseInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [tailPath, setTailPath] = useState("sessions/demo.jsonl");
 
   useEffect(() => {
     const id = setInterval(() => tick(), 200);
@@ -45,13 +52,14 @@ export function RuntimePanel() {
   const onStop = () => {
     stopRef.current?.();
     stopRef.current = null;
+    stopActive();
     setRunning(false);
   };
 
   const onRunDemo = () => {
     if (running) return;
     onStop();
-    stopRef.current = startDemoFromTranscript();
+    startDemo();
   };
 
   const ingestText = (text: string, replay: boolean) => {
@@ -76,6 +84,8 @@ export function RuntimePanel() {
     ingestText(text, true);
   };
 
+  const active = sessions.find((s) => s.id === activeId);
+
   return (
     <div
       className={`w-full h-full flex flex-col ${
@@ -97,7 +107,11 @@ export function RuntimePanel() {
         <span className="text-[11px] text-blue-400 font-medium">Agent Runtime</span>
         <span className="text-gray-600 text-[11px]">|</span>
         <span className="text-[11px] text-gray-500">
-          {mode === "replay" ? "replay" : mode === "live" ? "live" : "event stream"}
+          {active
+            ? `${active.transport} · ${active.status}`
+            : mode === "replay"
+            ? "replay"
+            : "event stream"}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
           {running && (
@@ -138,9 +152,9 @@ export function RuntimePanel() {
       {pasteOpen && (
         <div className="border-b border-border bg-[#0f1115] p-2 space-y-2">
           <div className="text-[10px] text-gray-500">
-            Paste JSONL, drop a file, or load a preset. Replay lights the Agent Graph.
+            Paste JSONL, drop a file, attach file-tail, or load a preset.
           </div>
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1 items-center">
             <button
               className="h-6 px-2 rounded text-[10px] bg-white/5 text-gray-300 hover:bg-white/10"
               onClick={() => {
@@ -176,6 +190,20 @@ export function RuntimePanel() {
                 e.target.value = "";
               }}
             />
+            <span className="text-gray-700 mx-1">|</span>
+            <input
+              className="h-6 w-40 bg-[#0c0e14] border border-border rounded px-1.5 font-mono text-[10px] text-gray-300 outline-none focus:border-accent"
+              value={tailPath}
+              onChange={(e) => setTailPath(e.target.value)}
+              placeholder="path to jsonl"
+            />
+            <button
+              className="h-6 px-2 rounded text-[10px] bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40"
+              disabled={running}
+              onClick={() => void attachTail(tailPath)}
+            >
+              Attach tail
+            </button>
           </div>
           <textarea
             className="w-full h-24 bg-[#0c0e14] border border-border rounded p-2 font-mono text-[11px] text-gray-200 outline-none focus:border-accent resize-y"
@@ -205,7 +233,7 @@ export function RuntimePanel() {
       <div className="flex-1 min-h-0 overflow-y-auto font-mono text-[12px]">
         {events.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-600 text-sm px-6 text-center gap-2">
-            <div>No events — Run demo, Import, or drop a .jsonl file</div>
+            <div>No events — Run demo, Import, Attach tail, or drop .jsonl</div>
             <div className="text-[11px] text-gray-700">Sessions light matching graph nodes</div>
           </div>
         )}

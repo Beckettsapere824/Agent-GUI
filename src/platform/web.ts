@@ -1,4 +1,4 @@
-import type { DirEntry, HostInfo, Platform, RunCommandResult } from "./types";
+import type { DirEntry, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
 import { checkCommand } from "./allowlist";
 
 const VIRTUAL: Record<string, string | null> = {
@@ -18,10 +18,12 @@ const VIRTUAL: Record<string, string | null> = {
   "skills/code-review/": null,
   "skills/code-review/SKILL.md":
     "---\nname: code-review\ndescription: Review patches\n---\n\n# Review\n",
+  "sessions/": null,
+  "sessions/demo.jsonl": "",
 };
 
 function normalize(path: string): string {
-  let p = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  const p = path.replace(/\\/g, "/").replace(/^\.\//, "");
   if (p === "." || p === "") return "";
   return p.replace(/\/+$/, "") + (path.endsWith("/") ? "/" : "");
 }
@@ -72,6 +74,7 @@ export const webPlatform: Platform = {
   async readTextFile(path: string): Promise<string> {
     const p = path.replace(/\\/g, "/");
     if (VIRTUAL[p] != null) return VIRTUAL[p] as string;
+    if (VIRTUAL[p] === "") return "";
     if (VIRTUAL[p + "/"] === null) throw new Error(`Is a directory: ${path}`);
     throw new Error(`File not found: ${path}`);
   },
@@ -130,5 +133,21 @@ export const webPlatform: Platform = {
 
   async loadProjectBlob(key: string): Promise<string | null> {
     return localStorage.getItem(`agent-os:${key}`);
+  },
+
+  watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs = 1000): () => void {
+    let last = "";
+    const p = path.replace(/\\/g, "/");
+    const tick = () => {
+      const cur = p in VIRTUAL ? String(VIRTUAL[p] ?? "") : "";
+      if (cur !== last) {
+        const kind: FsWatchEvent["kind"] = last === "" ? "create" : cur === "" ? "remove" : "modify";
+        last = cur;
+        onEvent({ path: p, kind });
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, intervalMs);
+    return () => clearInterval(id);
   },
 };

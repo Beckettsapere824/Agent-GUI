@@ -2,44 +2,92 @@ import { create } from "zustand";
 import { useGraphStore } from "./graphStore";
 import { useHarnessStore } from "./harnessStore";
 import type { DomainGraph, HarnessModel } from "../domain/types";
+import { sampleDomainGraph } from "../domain/sampleGraph";
+import { sampleHarness } from "../domain/sampleHarness";
 
 const STORAGE_KEY = "agent-os-project-v1";
+const REGISTRY_KEY = "agent-os-projects-registry";
 
 export interface ProjectSnapshot {
   version: 1;
+  id: string;
   name: string;
   updatedAt: string;
   graph: DomainGraph;
   harness: HarnessModel;
 }
 
+export interface ProjectMeta {
+  id: string;
+  name: string;
+  updatedAt: string;
+}
+
+function loadRegistry(): ProjectMeta[] {
+  try {
+    const raw = localStorage.getItem(REGISTRY_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as ProjectMeta[];
+  } catch {
+    return [];
+  }
+}
+
+function saveRegistry(list: ProjectMeta[]) {
+  localStorage.setItem(REGISTRY_KEY, JSON.stringify(list));
+}
+
+function projectKey(id: string) {
+  return `agent-os-project:${id}`;
+}
+
+function newId() {
+  return `proj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 interface ProjectState {
+  id: string;
   name: string;
   lastSavedAt: string | null;
+  registry: ProjectMeta[];
   setName: (n: string) => void;
+  refreshRegistry: () => void;
   saveLocal: () => boolean;
   loadLocal: () => boolean;
+  loadProject: (id: string) => boolean;
+  newProject: (name?: string) => void;
+  deleteProject: (id: string) => void;
   exportJson: () => string;
   importJson: (raw: string) => boolean;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
+  id: "local-default",
   name: "untitled-project",
   lastSavedAt: null,
+  registry: typeof localStorage !== "undefined" ? loadRegistry() : [],
 
   setName: (n) => set({ name: n }),
 
+  refreshRegistry: () => set({ registry: loadRegistry() }),
+
   saveLocal: () => {
     try {
+      const { id, name } = get();
       const snap: ProjectSnapshot = {
         version: 1,
-        name: get().name,
+        id,
+        name,
         updatedAt: new Date().toISOString(),
         graph: useGraphStore.getState().graph,
         harness: useHarnessStore.getState().model,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
-      set({ lastSavedAt: snap.updatedAt });
+      localStorage.setItem(projectKey(id), JSON.stringify(snap));
+      const reg = loadRegistry().filter((p) => p.id !== id);
+      reg.unshift({ id, name, updatedAt: snap.updatedAt });
+      saveRegistry(reg.slice(0, 30));
+      set({ lastSavedAt: snap.updatedAt, registry: reg.slice(0, 30) });
       return true;
     } catch {
       return false;
@@ -54,16 +102,62 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (snap.version !== 1) return false;
       useGraphStore.getState().replaceGraph(snap.graph);
       useHarnessStore.getState().replace(snap.harness);
-      set({ name: snap.name, lastSavedAt: snap.updatedAt });
+      set({
+        id: snap.id ?? "local-default",
+        name: snap.name,
+        lastSavedAt: snap.updatedAt,
+        registry: loadRegistry(),
+      });
       return true;
     } catch {
       return false;
     }
   },
 
+  loadProject: (id) => {
+    try {
+      const raw = localStorage.getItem(projectKey(id));
+      if (!raw) return false;
+      const snap = JSON.parse(raw) as ProjectSnapshot;
+      if (snap.version !== 1) return false;
+      useGraphStore.getState().replaceGraph(snap.graph);
+      useHarnessStore.getState().replace(snap.harness);
+      localStorage.setItem(STORAGE_KEY, raw);
+      set({
+        id: snap.id,
+        name: snap.name,
+        lastSavedAt: snap.updatedAt,
+        registry: loadRegistry(),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  newProject: (name = "untitled-project") => {
+    const id = newId();
+    useGraphStore.getState().replaceGraph(structuredClone(sampleDomainGraph));
+    useHarnessStore.getState().replace(structuredClone(sampleHarness));
+    set({ id, name, lastSavedAt: null });
+    get().saveLocal();
+  },
+
+  deleteProject: (id) => {
+    localStorage.removeItem(projectKey(id));
+    const reg = loadRegistry().filter((p) => p.id !== id);
+    saveRegistry(reg);
+    if (get().id === id) {
+      get().newProject();
+    } else {
+      set({ registry: reg });
+    }
+  },
+
   exportJson: () => {
     const snap: ProjectSnapshot = {
       version: 1,
+      id: get().id,
       name: get().name,
       updatedAt: new Date().toISOString(),
       graph: useGraphStore.getState().graph,
@@ -76,9 +170,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const snap = JSON.parse(raw) as ProjectSnapshot;
       if (snap.version !== 1 || !snap.graph || !snap.harness) return false;
+      const id = snap.id || newId();
       useGraphStore.getState().replaceGraph(snap.graph);
       useHarnessStore.getState().replace(snap.harness);
-      set({ name: snap.name ?? "imported", lastSavedAt: snap.updatedAt ?? null });
+      set({ id, name: snap.name ?? "imported", lastSavedAt: snap.updatedAt ?? null });
+      get().saveLocal();
       return true;
     } catch {
       return false;
