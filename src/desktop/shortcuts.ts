@@ -1,11 +1,11 @@
 import { useOSStore } from "../store/osStore";
 
 export const APP_DEFS = [
-  { id: "main-graph", title: "Agent Graph", type: "graph" as const, key: "1" },
-  { id: "harness", title: "Harness", type: "harness" as const, key: "2" },
-  { id: "runtime", title: "Runtime", type: "runtime" as const, key: "3" },
-  { id: "files", title: "Files", type: "files" as const, key: "4" },
-  { id: "logs", title: "Shell", type: "logs" as const, key: "5" },
+  { id: "main-graph", title: "Agent Graph", type: "graph" as const, key: "1", x: 24, y: 28, w: 1100, h: 700 },
+  { id: "harness", title: "Harness", type: "harness" as const, key: "2", x: 80, y: 56, w: 900, h: 560 },
+  { id: "runtime", title: "Runtime", type: "runtime" as const, key: "3", x: 420, y: 72, w: 640, h: 520 },
+  { id: "files", title: "Files", type: "files" as const, key: "4", x: 160, y: 100, w: 560, h: 480 },
+  { id: "logs", title: "Shell", type: "logs" as const, key: "5", x: 520, y: 120, w: 520, h: 400 },
 ] as const;
 
 export function openAppById(id: string) {
@@ -18,10 +18,10 @@ export function openAppById(id: string) {
       id: def.id,
       title: def.title,
       type: def.type,
-      x: 48 + Math.random() * 80,
-      y: 36 + Math.random() * 48,
-      width: def.type === "graph" ? 1000 : 720,
-      height: def.type === "graph" ? 640 : 480,
+      x: def.x,
+      y: def.y,
+      width: def.w,
+      height: def.h,
     });
   } else if (existing.minimized) {
     toggleMinimize(def.id);
