@@ -1,4 +1,7 @@
 import { useGraphStore } from "../store/graphStore";
+import { harnessIdsForGraph } from "../domain/links";
+import { useHarnessStore } from "../store/harnessStore";
+import { useOSStore } from "../store/osStore";
 
 export function NodeInspector() {
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
@@ -6,6 +9,9 @@ export function NodeInspector() {
   const updateNodeData = useGraphStore((s) => s.updateNodeData);
   const removeNode = useGraphStore((s) => s.removeNode);
   const clearSelection = useGraphStore((s) => s.clearSelection);
+  const harnessModel = useHarnessStore((s) => s.model);
+  const selectHarness = useHarnessStore((s) => s.select);
+  const openWindow = useOSStore((s) => s.openWindow);
 
   if (!node) {
     return (
@@ -16,6 +22,9 @@ export function NodeInspector() {
   }
 
   const d = node.data;
+  const linked = harnessIdsForGraph(node.id)
+    .map((id) => harnessModel.nodes[id])
+    .filter(Boolean);
 
   return (
     <div className="h-full flex flex-col text-xs">
@@ -85,6 +94,34 @@ export function NodeInspector() {
               }
             />
           </Field>
+        )}
+
+        {linked.length > 0 && (
+          <div className="pt-2 border-t border-border space-y-1.5">
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Harness links</div>
+            {linked.map((h) => (
+              <button
+                key={h.id}
+                className="w-full text-left px-2 py-1.5 rounded border border-border bg-[#0f1115] hover:border-sky-500/40"
+                onClick={() => {
+                  selectHarness(h.id);
+                  openWindow({
+                    id: "harness",
+                    title: "Harness",
+                    type: "harness",
+                    x: 80,
+                    y: 60,
+                    width: 900,
+                    height: 560,
+                  });
+                }}
+              >
+                <div className="text-[10px] text-sky-400/90 uppercase">{h.kind}</div>
+                <div className="text-gray-200">{h.name}</div>
+                {h.path && <div className="font-mono text-[10px] text-gray-500">{h.path}</div>}
+              </button>
+            ))}
+          </div>
         )}
 
         <div className="pt-2 border-t border-border">

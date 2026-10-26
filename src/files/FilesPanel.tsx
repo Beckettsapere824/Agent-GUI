@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useGraphStore } from "../store/graphStore";
 import { useProjectStore } from "../store/projectStore";
 
-/** Virtual project tree for demo — later bound to real FS via platform layer. */
 const VIRTUAL_TREE: { path: string; kind: "dir" | "file" }[] = [
   { path: "src/", kind: "dir" },
   { path: "src/main.rs", kind: "file" },
@@ -20,9 +19,12 @@ const VIRTUAL_TREE: { path: string; kind: "dir" | "file" }[] = [
 export function FilesPanel() {
   const [filter, setFilter] = useState("");
   const addNode = useGraphStore((s) => s.addNode);
-  const graphFiles = useGraphStore((s) =>
-    s.graph.nodes.filter((n) => n.kind === "file").map((n) => n.data.path ?? n.data.label)
-  );
+  const updateNodeData = useGraphStore((s) => s.updateNodeData);
+  const graph = useGraphStore((s) => s.graph);
+  const graphFiles = graph.nodes
+    .filter((n) => n.kind === "file")
+    .map((n) => n.data.path ?? n.data.label);
+
   const name = useProjectStore((s) => s.name);
   const setName = useProjectStore((s) => s.setName);
   const saveLocal = useProjectStore((s) => s.saveLocal);
@@ -34,6 +36,12 @@ export function FilesPanel() {
     const q = filter.trim().toLowerCase();
     return VIRTUAL_TREE.filter((t) => !q || t.path.toLowerCase().includes(q));
   }, [filter]);
+
+  const addFileToGraph = (path: string) => {
+    if (graphFiles.includes(path)) return;
+    const id = addNode("file", 100 + Math.random() * 80, 360 + Math.random() * 40);
+    updateNodeData(id, { label: path, path });
+  };
 
   const onExport = () => {
     const blob = new Blob([exportJson()], { type: "application/json" });
@@ -113,7 +121,7 @@ export function FilesPanel() {
                       : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
                   }`}
                   disabled={onGraph}
-                  onClick={() => addNode("file", 100 + Math.random() * 80, 360 + Math.random() * 40)}
+                  onClick={() => addFileToGraph(item.path)}
                   title={onGraph ? "Already on graph" : "Add FILE node to graph"}
                 >
                   {onGraph ? "on graph" : "+ graph"}
