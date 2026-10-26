@@ -1,25 +1,30 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
-  addEdge,
-  useNodesState,
-  useEdgesState,
-  Connection,
-  Node,
-  Edge,
   BackgroundVariant,
   MarkerType,
   Panel,
+  Connection,
+  NodeChange,
+  EdgeChange,
+  applyNodeChanges,
+  applyEdgeChanges,
+  Node as RFNode,
+  Edge as RFEdge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useState } from "react";
 import { AgentNode } from "./nodes/AgentNode";
 import { ToolNode } from "./nodes/ToolNode";
 import { SkillNode } from "./nodes/SkillNode";
 import { FileNode } from "./nodes/FileNode";
 import { useActivityStore } from "../store/activityStore";
+import { domainToFlow, useGraphStore } from "../store/graphStore";
+import { GraphToolbar } from "./GraphToolbar";
+import { NodeInspector } from "./NodeInspector";
 
 const nodeTypes = {
   agent: AgentNode,
@@ -28,194 +33,162 @@ const nodeTypes = {
   file: FileNode,
 };
 
-const initialNodes: Node[] = [
-  {
-    id: "agent-1",
-    type: "agent",
-    position: { x: 80, y: 160 },
-    data: { label: "Coding Agent", status: "idle", model: "claude-sonnet" },
-  },
-  {
-    id: "tool-1",
-    type: "tool",
-    position: { x: 380, y: 60 },
-    data: { label: "read_file", category: "fs" },
-  },
-  {
-    id: "tool-2",
-    type: "tool",
-    position: { x: 380, y: 160 },
-    data: { label: "write_file", category: "fs" },
-  },
-  {
-    id: "tool-3",
-    type: "tool",
-    position: { x: 380, y: 260 },
-    data: { label: "bash", category: "shell" },
-  },
-  {
-    id: "skill-1",
-    type: "skill",
-    position: { x: 680, y: 100 },
-    data: { label: "harness-sdd", description: "Structured Design Doc" },
-  },
-  {
-    id: "skill-2",
-    type: "skill",
-    position: { x: 680, y: 220 },
-    data: { label: "code-review", description: "Review & suggest fixes" },
-  },
-  {
-    id: "file-1",
-    type: "file",
-    position: { x: 80, y: 360 },
-    data: { label: "src/main.rs", path: "src/main.rs" },
-  },
-  {
-    id: "file-2",
-    type: "file",
-    position: { x: 280, y: 360 },
-    data: { label: "Cargo.toml", path: "Cargo.toml" },
-  },
-];
-
-const initialEdges: Edge[] = [
-  {
-    id: "e1",
-    source: "agent-1",
-    target: "tool-1",
-    style: { stroke: "#3b82f6" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
-  },
-  {
-    id: "e2",
-    source: "agent-1",
-    target: "tool-2",
-    style: { stroke: "#3b82f6" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
-  },
-  {
-    id: "e3",
-    source: "agent-1",
-    target: "tool-3",
-    style: { stroke: "#3b82f6" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
-  },
-  {
-    id: "e4",
-    source: "agent-1",
-    target: "skill-1",
-    style: { stroke: "#8b5cf6" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
-  },
-  {
-    id: "e5",
-    source: "agent-1",
-    target: "skill-2",
-    style: { stroke: "#8b5cf6" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
-  },
-  {
-    id: "e6",
-    source: "tool-2",
-    target: "file-1",
-    style: { stroke: "#10b981" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
-  },
-  {
-    id: "e7",
-    source: "tool-1",
-    target: "file-2",
-    style: { stroke: "#10b981" },
-    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
-  },
-];
+const edgeStroke: Record<string, string> = {
+  uses: "#3b82f6",
+  writes: "#10b981",
+  reads: "#10b981",
+  manages: "#8b5cf6",
+};
 
 export function GraphWorkspace() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const graph = useGraphStore((s) => s.graph);
+  const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
+  const moveNode = useGraphStore((s) => s.moveNode);
+  const addEdge = useGraphStore((s) => s.addEdge);
+  const removeEdge = useGraphStore((s) => s.removeEdge);
+  const removeNode = useGraphStore((s) => s.removeNode);
+  const setSelection = useGraphStore((s) => s.setSelection);
+  const updateNodeData = useGraphStore((s) => s.updateNodeData);
+
   const activeNodeIds = useActivityStore((s) => s.activeNodeIds);
   const running = useActivityStore((s) => s.running);
 
-  // Reflect activity onto node data (status / highlight)
+  const base = useMemo(() => domainToFlow(graph.nodes, graph.edges), [graph]);
+
+  const [nodes, setNodes] = useState<RFNode[]>(base.flowNodes);
+  const [edges, setEdges] = useState<RFEdge[]>(base.flowEdges);
+
+  // Sync domain → flow when domain changes (add/remove/data)
   useEffect(() => {
-    setNodes((nds) =>
-      nds.map((n) => {
-        const active = !!activeNodeIds[n.id];
-        const prev = n.data as { status?: string; active?: boolean };
-        if (n.type === "agent") {
-          const status = running ? (active ? "running" : "busy") : "idle";
-          if (prev.status === status && prev.active === active) return n;
-          return { ...n, data: { ...n.data, status, active } };
-        }
-        if (prev.active === active) return n;
-        return { ...n, data: { ...n.data, active } };
+    const { flowNodes, flowEdges } = domainToFlow(graph.nodes, graph.edges);
+    setNodes(
+      flowNodes.map((n) => ({
+        ...n,
+        selected: n.id === selectedNodeId,
+        data: {
+          ...n.data,
+          active: !!activeNodeIds[n.id],
+          status:
+            n.type === "agent"
+              ? running
+                ? activeNodeIds[n.id]
+                  ? "running"
+                  : "busy"
+                : (n.data as { status?: string }).status ?? "idle"
+              : (n.data as { status?: string }).status,
+        },
+      }))
+    );
+    setEdges(
+      flowEdges.map((e) => {
+        const kind = (e.data as { kind?: string } | undefined)?.kind ?? "uses";
+        const color = edgeStroke[kind] ?? "#3b82f6";
+        return {
+          ...e,
+          style: { stroke: color },
+          markerEnd: { type: MarkerType.ArrowClosed, color },
+          type: "smoothstep",
+        };
       })
     );
-  }, [activeNodeIds, running, setNodes]);
+  }, [graph, selectedNodeId, activeNodeIds, running]);
+
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      setNodes((nds) => applyNodeChanges(changes, nds));
+      for (const c of changes) {
+        if (c.type === "position" && c.position && c.dragging === false) {
+          moveNode(c.id, c.position.x, c.position.y);
+        }
+        if (c.type === "select" && c.selected) {
+          setSelection(c.id, null);
+        }
+        if (c.type === "remove") {
+          removeNode(c.id);
+        }
+      }
+    },
+    [moveNode, setSelection, removeNode]
+  );
+
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => {
+      setEdges((eds) => applyEdgeChanges(changes, eds));
+      for (const c of changes) {
+        if (c.type === "remove") removeEdge(c.id);
+        if (c.type === "select" && c.selected) setSelection(null, c.id);
+      }
+    },
+    [removeEdge, setSelection]
+  );
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...connection,
-            style: { stroke: "#3b82f6" },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6" },
-          },
-          eds
-        )
-      );
+      if (connection.source && connection.target) {
+        addEdge(connection.source, connection.target);
+      }
     },
-    [setEdges]
+    [addEdge]
   );
 
+  const onPaneClick = useCallback(() => {
+    setSelection(null, null);
+  }, [setSelection]);
+
+  // keep activity flags fresh on nodes without full domain rewrite path for agent status only
+  useEffect(() => {
+    for (const [id, exp] of Object.entries(activeNodeIds)) {
+      if (exp < Date.now()) continue;
+      // activity store tick handles expiry; visual already bound via effect above
+      void id;
+    }
+  }, [activeNodeIds, updateNodeData]);
+
   return (
-    <div className="w-full h-full">
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onConnect={onConnect}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{
-          type: "smoothstep",
-        }}
-        minZoom={0.2}
-        maxZoom={2}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2f3a" />
-        <Controls showInteractive={false} position="bottom-left" />
-        <MiniMap
-          nodeStrokeWidth={3}
-          zoomable
-          pannable
-          maskColor="rgba(15, 17, 21, 0.75)"
-          position="bottom-right"
-        />
-        <Panel position="top-left" className="!m-2">
-          <div className="flex items-center gap-2 bg-[#161a22]/90 border border-border rounded-md px-2.5 py-1.5 text-[11px] text-gray-400 backdrop-blur">
-            <span className="text-blue-400 font-medium">Graph</span>
-            <span className="text-gray-600">|</span>
-            <span>{nodes.length} nodes</span>
-            <span className="text-gray-600">·</span>
-            <span>{edges.length} edges</span>
-            {running && (
-              <>
-                <span className="text-gray-600">·</span>
-                <span className="text-green-400 flex items-center gap-1">
+    <div className="w-full h-full flex">
+      <div className="flex-1 min-w-0 relative">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          onPaneClick={onPaneClick}
+          nodeTypes={nodeTypes}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
+          proOptions={{ hideAttribution: true }}
+          deleteKeyCode={["Backspace", "Delete"]}
+          multiSelectionKeyCode="Shift"
+          minZoom={0.2}
+          maxZoom={2}
+        >
+          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2f3a" />
+          <Controls showInteractive={false} position="bottom-left" />
+          <MiniMap
+            nodeStrokeWidth={3}
+            zoomable
+            pannable
+            maskColor="rgba(15, 17, 21, 0.75)"
+            position="bottom-right"
+          />
+          <Panel position="top-left" className="!m-2">
+            <div className="bg-[#161a22]/95 border border-border rounded-md px-2.5 py-1.5 backdrop-blur">
+              <GraphToolbar />
+              {running && (
+                <div className="mt-1 text-[10px] text-green-400 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  live
-                </span>
-              </>
-            )}
-          </div>
-        </Panel>
-      </ReactFlow>
+                  live activity
+                </div>
+              )}
+            </div>
+          </Panel>
+        </ReactFlow>
+      </div>
+
+      <div className="w-64 shrink-0 border-l border-border bg-panel">
+        <NodeInspector />
+      </div>
     </div>
   );
 }

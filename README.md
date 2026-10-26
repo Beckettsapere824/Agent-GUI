@@ -1,68 +1,43 @@
 # Agent OS
 
-Graphical operating system for **Agent-driven coding**, **Harness engineering** and **Graph engineering**.
+Graphical operating system for **Agent-driven coding**, **Harness engineering**, and **Graph engineering**.
 
-Not a chat wrapper. A real desktop environment where agent graphs, harness structures and coding sessions are first-class visual objects.
+Not a chat wrapper. Not another Flowise clone. A local-first desktop environment where agent graphs, harness structures, and coding sessions are first-class visual objects.
 
-## Tech Stack
+See [ROADMAP.md](./ROADMAP.md) for positioning, adopted ideas, rejected patterns, and checkpoints.
 
-- **Tauri 2** — small binary, strong security, native desktop
+## Stack
+
+- **Tauri 2** — native desktop, small binary
 - **React + TypeScript + Vite**
-- **@xyflow/react** — production-grade interactive graph
-- **Zustand** — lightweight state
-- **Tailwind** — fast styling
+- **@xyflow/react** — interactive graphs
+- **Zustand** — OS + domain state
+- **Tailwind** — dense dark UI
 
-## Current Status (v0.1)
+## Status
 
-- Desktop shell with movable / minimizable / maximizable windows
-- Taskbar + multi-window management
-- Main **Agent Graph** workspace with custom node types (Agent / Tool / Skill / File)
-- Dark OS aesthetic, high information density
+**CP0 done · CP1 in progress**
 
-## Quick Start
+- Desktop shell (windows, taskbar, resize, z-order)
+- Agent Graph with domain model + inspector + add/delete
+- Harness structure panel (sketch)
+- Runtime event stream with demo run driving graph highlights
 
-### Prerequisites
-
-- Node.js 20+
-- Rust (for Tauri) — https://rustup.rs
-- Tauri system dependencies: https://v2.tauri.app/start/prerequisites/
-
-### Run (Web preview — fastest)
+## Run
 
 ```bash
 npm install
-npm run dev
+npm run dev          # browser
+npm run tauri:dev    # desktop (needs Rust)
 ```
 
-Open http://localhost:1420
+## Design principles
 
-### Run (Real Desktop App)
-
-```bash
-npm install
-npm run tauri:dev
-```
-
-### Build release
-
-```bash
-npm run tauri:build
-```
-
-## Roadmap
-
-1. Harness structure visualization
-2. Agent runtime event stream (light up nodes)
-3. Trace & waterfall view
-4. Code diff & file heat
-5. Real agent process management via Tauri
-
-## Design Principles
-
-- Graph is the primary surface
-- High information density
-- Local-first
-- Specialized windows (Graph / Harness / Runtime / Files / Logs)
+1. Graph is the primary surface
+2. High information density
+3. Local-first
+4. Harness / progressive disclosure as a first-class concept
+5. Observation (events lighting structure) over pure authoring chrome
 
 ---
 
