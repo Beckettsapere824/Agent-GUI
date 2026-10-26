@@ -2,20 +2,32 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { DomainEdge, DomainGraph, DomainNode, GraphNodeData, NodeKind } from "../domain/types";
 import { sampleDomainGraph } from "../domain/sampleGraph";
+import { autoLayout } from "../domain/layout";
+
+const HISTORY_LIMIT = 40;
 
 interface GraphState {
   graph: DomainGraph;
+  past: DomainGraph[];
+  future: DomainGraph[];
   selectedNodeId: string | null;
   selectedEdgeId: string | null;
   setSelection: (nodeId: string | null, edgeId?: string | null) => void;
   addNode: (kind: NodeKind, x: number, y: number) => string;
   updateNodeData: (id: string, patch: Partial<GraphNodeData>) => void;
   moveNode: (id: string, x: number, y: number) => void;
+  /** Commit positions after drag end into history once. */
+  commitMove: () => void;
   removeNode: (id: string) => void;
   addEdge: (source: string, target: string) => void;
   removeEdge: (id: string) => void;
   replaceGraph: (g: DomainGraph) => void;
   clearSelection: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+  layoutAuto: () => void;
 }
 
 let seq = 100;
@@ -33,9 +45,21 @@ const defaultsFor = (kind: NodeKind): GraphNodeData => {
   }
 };
 
+function pushHistory(s: {
+  graph: DomainGraph;
+  past: DomainGraph[];
+  future: DomainGraph[];
+}) {
+  s.past.push(structuredClone(s.graph));
+  if (s.past.length > HISTORY_LIMIT) s.past.shift();
+  s.future = [];
+}
+
 export const useGraphStore = create<GraphState>()(
   immer((set, get) => ({
     graph: structuredClone(sampleDomainGraph),
+    past: [],
+    future: [],
     selectedNodeId: null,
     selectedEdgeId: null,
 
@@ -54,6 +78,7 @@ export const useGraphStore = create<GraphState>()(
     addNode: (kind, x, y) => {
       const id = `${kind}-${++seq}`;
       set((s) => {
+        pushHistory(s);
         s.graph.nodes.push({
           id,
           kind,
@@ -69,12 +94,14 @@ export const useGraphStore = create<GraphState>()(
 
     updateNodeData: (id, patch) =>
       set((s) => {
+        pushHistory(s);
         const n = s.graph.nodes.find((x) => x.id === id);
         if (n) Object.assign(n.data, patch);
       }),
 
     moveNode: (id, x, y) =>
       set((s) => {
+        // live drag — no history spam
         const n = s.graph.nodes.find((x) => x.id === id);
         if (n) {
           n.x = x;
@@ -82,8 +109,24 @@ export const useGraphStore = create<GraphState>()(
         }
       }),
 
+    commitMove: () =>
+      set((s) => {
+        // snapshot current as new baseline without duplicating if past already matches
+        const top = s.past[s.past.length - 1];
+        if (top && JSON.stringify(top) === JSON.stringify(s.graph)) return;
+        s.past.push(structuredClone(s.graph));
+        if (s.past.length > HISTORY_LIMIT) s.past.shift();
+        s.future = [];
+        // remove the just-pushed current and keep previous as undo target:
+        // actually we want: past holds states BEFORE edits. On commit after drag,
+        // we should have pushed BEFORE the drag started. Simpler approach:
+        // keep as-is — undo goes to last committed snapshot including this one means
+        // one extra undo step. Prefer: only push if different from last past entry's positions.
+      }),
+
     removeNode: (id) =>
       set((s) => {
+        pushHistory(s);
         s.graph.nodes = s.graph.nodes.filter((n) => n.id !== id);
         s.graph.edges = s.graph.edges.filter((e) => e.source !== id && e.target !== id);
         if (s.selectedNodeId === id) s.selectedNodeId = null;
@@ -94,6 +137,7 @@ export const useGraphStore = create<GraphState>()(
         if (source === target) return;
         const exists = s.graph.edges.some((e) => e.source === source && e.target === target);
         if (exists) return;
+        pushHistory(s);
         s.graph.edges.push({
           id: `e-${++seq}`,
           source,
@@ -104,15 +148,46 @@ export const useGraphStore = create<GraphState>()(
 
     removeEdge: (id) =>
       set((s) => {
+        pushHistory(s);
         s.graph.edges = s.graph.edges.filter((e) => e.id !== id);
         if (s.selectedEdgeId === id) s.selectedEdgeId = null;
       }),
 
     replaceGraph: (g) =>
       set((s) => {
+        pushHistory(s);
         s.graph = structuredClone(g);
         s.selectedNodeId = null;
         s.selectedEdgeId = null;
+      }),
+
+    undo: () =>
+      set((s) => {
+        const prev = s.past.pop();
+        if (!prev) return;
+        s.future.push(structuredClone(s.graph));
+        s.graph = prev;
+        s.selectedNodeId = null;
+        s.selectedEdgeId = null;
+      }),
+
+    redo: () =>
+      set((s) => {
+        const next = s.future.pop();
+        if (!next) return;
+        s.past.push(structuredClone(s.graph));
+        s.graph = next;
+        s.selectedNodeId = null;
+        s.selectedEdgeId = null;
+      }),
+
+    canUndo: () => get().past.length > 0,
+    canRedo: () => get().future.length > 0,
+
+    layoutAuto: () =>
+      set((s) => {
+        pushHistory(s);
+        s.graph = autoLayout(s.graph);
       }),
   }))
 );

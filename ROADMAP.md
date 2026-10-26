@@ -1,30 +1,28 @@
 # Agent OS — Production Roadmap
 
-## Positioning
-
-Graphical OS for coding-agent / harness / graph engineering — not a Flowise clone.
-
 ## Checkpoints
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0 | done | Desktop shell, graph, runtime demo, harness sketch |
-| CP1 | done | Domain graph, editor, inspector |
-| CP2 | done | Harness model + content inspector |
-| CP3 | done | Files panel, save/load, export |
-| CP4 | done | Transcript adapter, replay, graph↔harness links |
-| CP5 | done | `src/platform/` boundary, web stubs, Tauri FS/shell commands |
-| CP6 | next | Undo stack, layout, export image, perf, command allowlist |
+| CP0–CP5 | done | Shell, graph, harness, files, transcript, platform |
+| CP6 | done | Undo/redo, auto-layout, SVG export, command allowlist |
+| CP7 | next | Polish + deeper agent wiring (session import UX, multi-window keyboard) |
 
-## CP5 notes
+## CP6 notes
 
-- **Rule**: UI imports host I/O only from `src/platform/` — never `@tauri-apps/*` elsewhere.
-- `getPlatform()` selects web vs Tauri at runtime.
-- Web: virtual workspace tree + simulated shell.
-- Tauri commands: `host_info`, `list_dir`, `read_text_file`, `write_text_file`, `run_command`, `save_project_blob`, `load_project_blob`.
-- Files panel browses platform listDir; preview reads files.
-- Logs taskbar entry → Shell panel (`runCommand`).
+- Graph history stack (add/remove/edit/layout); Ctrl/Cmd+Z / Shift+Z
+- `autoLayout` by node kind columns (no dagre dependency)
+- Domain → SVG export download
+- Shell `checkCommand` allowlist shared by web + Tauri front door
 
-## Security note
+## Demo bar (ready to run)
 
-`run_command` is intentionally open for local demo. Before production ship: allowlist binaries / deny patterns / user confirm for network-capable tools.
+```bash
+git pull && npm install && npm run dev
+```
+
+1. Agent Graph — edit, Undo, Layout, SVG
+2. Runtime — Run demo / paste transcript
+3. Harness — structure + inspector + links from graph
+4. Files — browse virtual tree, + graph, preview
+5. Shell — allowlisted commands

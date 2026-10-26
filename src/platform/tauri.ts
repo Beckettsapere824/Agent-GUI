@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { DirEntry, HostInfo, Platform, RunCommandResult } from "./types";
+import { checkCommand } from "./allowlist";
 
 export const tauriPlatform: Platform = {
   kind: "tauri",
@@ -21,6 +22,10 @@ export const tauriPlatform: Platform = {
   },
 
   async runCommand(cmd: string, cwd?: string): Promise<RunCommandResult> {
+    const gate = checkCommand(cmd);
+    if (!gate.ok) {
+      return { code: 126, stdout: "", stderr: `allowlist: ${gate.reason}\n`, durationMs: 0 };
+    }
     return invoke<RunCommandResult>("run_command", { cmd, cwd: cwd ?? null });
   },
 

@@ -1,6 +1,6 @@
 import type { DirEntry, HostInfo, Platform, RunCommandResult } from "./types";
+import { checkCommand } from "./allowlist";
 
-/** In-browser virtual workspace for demos without Tauri. */
 const VIRTUAL: Record<string, string | null> = {
   "src/": null,
   "src/main.rs":
@@ -54,8 +54,7 @@ export const webPlatform: Platform = {
       const name = slash >= 0 ? rest.slice(0, slash) : rest;
       if (!name || seen.has(name)) continue;
       seen.add(name);
-      const childPath = prefix + name + (slash >= 0 ? "/" : "");
-      const isDir = slash >= 0 || VIRTUAL[childPath] === null || key.endsWith("/");
+      const isDir = slash >= 0 || VIRTUAL[prefix + name + "/"] === null || key.endsWith("/");
       out.push({
         name,
         path: isDir ? prefix + name + "/" : prefix + name,
@@ -80,7 +79,6 @@ export const webPlatform: Platform = {
   async writeTextFile(path: string, content: string): Promise<void> {
     const p = path.replace(/\\/g, "/");
     VIRTUAL[p] = content;
-    // ensure parent dirs exist as markers
     let dir = parentDir(p);
     while (dir) {
       if (!(dir in VIRTUAL)) VIRTUAL[dir] = null;
@@ -90,23 +88,33 @@ export const webPlatform: Platform = {
 
   async runCommand(cmd: string, _cwd?: string): Promise<RunCommandResult> {
     const start = performance.now();
-    // Simulated shell for browser demos
+    const gate = checkCommand(cmd);
+    if (!gate.ok) {
+      return {
+        code: 126,
+        stdout: "",
+        stderr: `allowlist: ${gate.reason}\n`,
+        durationMs: Math.round(performance.now() - start),
+      };
+    }
     let stdout = "";
     let stderr = "";
     let code = 0;
     const c = cmd.trim();
     if (c === "pwd") stdout = "/virtual\n";
-    else if (c.startsWith("echo ")) stdout = c.slice(5) + "\n";
+    else if (c === "echo" || c.startsWith("echo ")) stdout = (c === "echo" ? "" : c.slice(5)) + "\n";
     else if (c === "ls" || c.startsWith("ls ")) {
-      stdout = Object.keys(VIRTUAL)
-        .filter((k) => !k.includes("/") || k.split("/").length === 2)
-        .join("\n") + "\n";
-    } else if (c.includes("cargo")) {
-      stdout = "web stub: cargo not available in browser\n";
-      code = 0;
+      stdout =
+        Object.keys(VIRTUAL)
+          .filter((k) => !k.includes("/") || (k.match(/\//g) || []).length === 1)
+          .map((k) => k.replace(/\/$/, ""))
+          .filter((v, i, a) => a.indexOf(v) === i)
+          .join("\n") + "\n";
+    } else if (c.startsWith("git ") || c.startsWith("cargo ") || c.includes("--version")) {
+      stdout = `web stub: would run: ${c}\n`;
     } else {
-      stderr = `web stub: command not executed: ${c}\n`;
-      code = 127;
+      stderr = `web stub: ${c}\n`;
+      code = 0;
     }
     return {
       code,

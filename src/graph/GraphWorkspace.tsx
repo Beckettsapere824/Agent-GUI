@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -44,21 +44,25 @@ export function GraphWorkspace() {
   const graph = useGraphStore((s) => s.graph);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const moveNode = useGraphStore((s) => s.moveNode);
+  const commitMove = useGraphStore((s) => s.commitMove);
   const addEdge = useGraphStore((s) => s.addEdge);
   const removeEdge = useGraphStore((s) => s.removeEdge);
   const removeNode = useGraphStore((s) => s.removeNode);
   const setSelection = useGraphStore((s) => s.setSelection);
-  const updateNodeData = useGraphStore((s) => s.updateNodeData);
+  const undo = useGraphStore((s) => s.undo);
+  const redo = useGraphStore((s) => s.redo);
 
   const activeNodeIds = useActivityStore((s) => s.activeNodeIds);
   const running = useActivityStore((s) => s.running);
+
+  const draggingRef = useRef(false);
+  const snapshotBeforeDrag = useRef<string | null>(null);
 
   const base = useMemo(() => domainToFlow(graph.nodes, graph.edges), [graph]);
 
   const [nodes, setNodes] = useState<RFNode[]>(base.flowNodes);
   const [edges, setEdges] = useState<RFEdge[]>(base.flowEdges);
 
-  // Sync domain → flow when domain changes (add/remove/data)
   useEffect(() => {
     const { flowNodes, flowEdges } = domainToFlow(graph.nodes, graph.edges);
     setNodes(
@@ -93,12 +97,55 @@ export function GraphWorkspace() {
     );
   }, [graph, selectedNodeId, activeNodeIds, running]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (e.key === "z" && e.shiftKey) {
+        e.preventDefault();
+        redo();
+      } else if (e.key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((nds) => applyNodeChanges(changes, nds));
       for (const c of changes) {
-        if (c.type === "position" && c.position && c.dragging === false) {
+        if (c.type === "position" && c.position) {
+          if (c.dragging && !draggingRef.current) {
+            draggingRef.current = true;
+            snapshotBeforeDrag.current = JSON.stringify(useGraphStore.getState().graph);
+          }
           moveNode(c.id, c.position.x, c.position.y);
+          if (c.dragging === false && draggingRef.current) {
+            draggingRef.current = false;
+            // push pre-drag state into history
+            const before = snapshotBeforeDrag.current;
+            snapshotBeforeDrag.current = null;
+            if (before) {
+              const pastGraph = JSON.parse(before);
+              useGraphStore.setState((s) => {
+                const top = s.past[s.past.length - 1];
+                if (!top || JSON.stringify(top) !== before) {
+                  s.past.push(pastGraph);
+                  if (s.past.length > 40) s.past.shift();
+                  s.future = [];
+                }
+              });
+            }
+            commitMove();
+          }
         }
         if (c.type === "select" && c.selected) {
           setSelection(c.id, null);
@@ -108,7 +155,7 @@ export function GraphWorkspace() {
         }
       }
     },
-    [moveNode, setSelection, removeNode]
+    [moveNode, setSelection, removeNode, commitMove]
   );
 
   const onEdgesChange = useCallback(
@@ -134,15 +181,6 @@ export function GraphWorkspace() {
   const onPaneClick = useCallback(() => {
     setSelection(null, null);
   }, [setSelection]);
-
-  // keep activity flags fresh on nodes without full domain rewrite path for agent status only
-  useEffect(() => {
-    for (const [id, exp] of Object.entries(activeNodeIds)) {
-      if (exp < Date.now()) continue;
-      // activity store tick handles expiry; visual already bound via effect above
-      void id;
-    }
-  }, [activeNodeIds, updateNodeData]);
 
   return (
     <div className="w-full h-full flex">

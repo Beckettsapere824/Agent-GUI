@@ -2,7 +2,6 @@ import { useState } from "react";
 import { getPlatform, type RunCommandResult } from "../platform";
 import { useWorkspaceStore } from "../store/workspaceStore";
 
-/** Lightweight shell surface for platform runCommand — not a full terminal. */
 export function ShellPanel() {
   const root = useWorkspaceStore((s) => s.root);
   const [cmd, setCmd] = useState("pwd");
@@ -35,6 +34,7 @@ export function ShellPanel() {
         <span className="text-emerald-400/90 font-medium text-[11px]">Shell</span>
         <span className="text-gray-600">|</span>
         <span className="text-[10px] text-gray-500 font-mono truncate">{root || "/"}</span>
+        <span className="ml-auto text-[10px] text-gray-600">allowlisted</span>
       </div>
       <div className="p-2 border-b border-border flex gap-1">
         <input
@@ -44,7 +44,7 @@ export function ShellPanel() {
           onKeyDown={(e) => {
             if (e.key === "Enter") void run();
           }}
-          placeholder="command…"
+          placeholder="pwd | ls | git status | cargo check …"
         />
         <button
           className="h-8 px-3 rounded bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-40"
@@ -71,7 +71,7 @@ export function ShellPanel() {
         ))}
         {log.length === 0 && (
           <li className="px-3 py-6 text-center text-gray-600">
-            Web: simulated. Tauri: real shell via platform.runCommand
+            Allowlist: pwd, ls, echo, git status/log/diff, cargo check/test/build, *--version
           </li>
         )}
       </ul>
