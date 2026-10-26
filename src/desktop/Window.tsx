@@ -2,11 +2,11 @@ import { useRef, useState, useCallback, ReactNode } from "react";
 import { WindowState, useOSStore } from "../store/osStore";
 
 interface Props {
-  window: WindowState;
+  win: WindowState;
   children: ReactNode;
 }
 
-export function Window({ window, children }: Props) {
+export function Window({ win, children }: Props) {
   const { focusWindow, moveWindow, closeWindow, toggleMinimize, toggleMaximize } =
     useOSStore();
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -14,14 +14,14 @@ export function Window({ window, children }: Props) {
 
   const onMouseDownTitle = useCallback(
     (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || win.maximized) return;
       e.preventDefault();
-      focusWindow(window.id);
+      focusWindow(win.id);
       dragRef.current = {
         startX: e.clientX,
         startY: e.clientY,
-        origX: window.x,
-        origY: window.y,
+        origX: win.x,
+        origY: win.y,
       };
       setDragging(true);
 
@@ -29,36 +29,36 @@ export function Window({ window, children }: Props) {
         if (!dragRef.current) return;
         const dx = ev.clientX - dragRef.current.startX;
         const dy = ev.clientY - dragRef.current.startY;
-        moveWindow(window.id, dragRef.current.origX + dx, dragRef.current.origY + dy);
+        moveWindow(win.id, dragRef.current.origX + dx, dragRef.current.origY + dy);
       };
 
       const onUp = () => {
         dragRef.current = null;
         setDragging(false);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
+        globalThis.window.removeEventListener("mousemove", onMove);
+        globalThis.window.removeEventListener("mouseup", onUp);
       };
 
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+      globalThis.window.addEventListener("mousemove", onMove);
+      globalThis.window.addEventListener("mouseup", onUp);
     },
-    [window, focusWindow, moveWindow]
+    [win, focusWindow, moveWindow]
   );
 
-  const style: React.CSSProperties = window.maximized
+  const style: React.CSSProperties = win.maximized
     ? {
         left: 0,
         top: 0,
         width: "100%",
         height: "calc(100% - 40px)",
-        zIndex: window.zIndex,
+        zIndex: win.zIndex,
       }
     : {
-        left: window.x,
-        top: window.y,
-        width: window.width,
-        height: window.height,
-        zIndex: window.zIndex,
+        left: win.x,
+        top: win.y,
+        width: win.width,
+        height: win.height,
+        zIndex: win.zIndex,
       };
 
   return (
@@ -67,47 +67,53 @@ export function Window({ window, children }: Props) {
         dragging ? "cursor-grabbing" : ""
       }`}
       style={style}
-      onMouseDown={() => focusWindow(window.id)}
+      onMouseDown={() => focusWindow(win.id)}
     >
+      {/* Title bar */}
       <div
-        className="h-9 flex items-center justify-between px-3 bg-[#1a1f2a] border-b border-border select-none"
+        className="h-9 flex items-center justify-between px-3 bg-[#1a1f2a] border-b border-border select-none shrink-0"
         onMouseDown={onMouseDownTitle}
+        onDoubleClick={() => toggleMaximize(win.id)}
       >
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
-          <span className="w-2 h-2 rounded-full bg-accent" />
-          {window.title}
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-200 truncate">
+          <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+          {win.title}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
-            className="w-7 h-6 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white text-xs"
+            className="w-8 h-7 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white text-sm leading-none"
             onClick={(e) => {
               e.stopPropagation();
-              toggleMinimize(window.id);
+              toggleMinimize(win.id);
             }}
+            title="Minimize"
           >
             −
           </button>
           <button
-            className="w-7 h-6 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white text-xs"
+            className="w-8 h-7 flex items-center justify-center rounded hover:bg-white/10 text-gray-400 hover:text-white text-xs leading-none"
             onClick={(e) => {
               e.stopPropagation();
-              toggleMaximize(window.id);
+              toggleMaximize(win.id);
             }}
+            title="Maximize"
           >
-            □
+            {win.maximized ? "❐" : "□"}
           </button>
           <button
-            className="w-7 h-6 flex items-center justify-center rounded hover:bg-red-500/80 text-gray-400 hover:text-white text-xs"
+            className="w-8 h-7 flex items-center justify-center rounded hover:bg-red-500/80 text-gray-400 hover:text-white text-sm leading-none"
             onClick={(e) => {
               e.stopPropagation();
-              closeWindow(window.id);
+              closeWindow(win.id);
             }}
+            title="Close"
           >
             ×
           </button>
         </div>
       </div>
 
+      {/* Content */}
       <div className="flex-1 min-h-0 relative">{children}</div>
     </div>
   );

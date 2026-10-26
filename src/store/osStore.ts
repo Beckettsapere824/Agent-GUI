@@ -36,10 +36,10 @@ export const useOSStore = create<OSState>()(
         id: "main-graph",
         title: "Agent Graph",
         type: "graph",
-        x: 40,
-        y: 40,
-        width: 960,
-        height: 640,
+        x: 24,
+        y: 24,
+        width: 1100,
+        height: 700,
         minimized: false,
         maximized: false,
         zIndex: 10,
@@ -71,7 +71,10 @@ export const useOSStore = create<OSState>()(
       set((state) => {
         state.windows = state.windows.filter((w) => w.id !== id);
         if (state.activeWindowId === id) {
-          state.activeWindowId = state.windows[state.windows.length - 1]?.id ?? null;
+          const remaining = state.windows;
+          state.activeWindowId = remaining.length
+            ? remaining.reduce((a, b) => (a.zIndex > b.zIndex ? a : b)).id
+            : null;
         }
       }),
 
@@ -88,8 +91,8 @@ export const useOSStore = create<OSState>()(
       set((state) => {
         const win = state.windows.find((w) => w.id === id);
         if (win && !win.maximized) {
-          win.x = x;
-          win.y = y;
+          win.x = Math.max(-win.width + 80, x);
+          win.y = Math.max(0, y);
         }
       }),
 
@@ -97,8 +100,8 @@ export const useOSStore = create<OSState>()(
       set((state) => {
         const win = state.windows.find((w) => w.id === id);
         if (win && !win.maximized) {
-          win.width = Math.max(320, width);
-          win.height = Math.max(200, height);
+          win.width = Math.max(360, width);
+          win.height = Math.max(240, height);
         }
       }),
 
@@ -110,6 +113,11 @@ export const useOSStore = create<OSState>()(
           if (!win.minimized) {
             win.zIndex = state.nextZIndex++;
             state.activeWindowId = id;
+          } else if (state.activeWindowId === id) {
+            const visible = state.windows.filter((w) => !w.minimized && w.id !== id);
+            state.activeWindowId = visible.length
+              ? visible.reduce((a, b) => (a.zIndex > b.zIndex ? a : b)).id
+              : null;
           }
         }
       }),

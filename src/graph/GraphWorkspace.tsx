@@ -12,6 +12,7 @@ import {
   Edge,
   BackgroundVariant,
   MarkerType,
+  Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { AgentNode } from "./nodes/AgentNode";
@@ -30,38 +31,50 @@ const initialNodes: Node[] = [
   {
     id: "agent-1",
     type: "agent",
-    position: { x: 120, y: 120 },
+    position: { x: 80, y: 160 },
     data: { label: "Coding Agent", status: "idle", model: "claude-sonnet" },
   },
   {
     id: "tool-1",
     type: "tool",
-    position: { x: 420, y: 80 },
+    position: { x: 380, y: 60 },
     data: { label: "read_file", category: "fs" },
   },
   {
     id: "tool-2",
     type: "tool",
-    position: { x: 420, y: 180 },
+    position: { x: 380, y: 160 },
     data: { label: "write_file", category: "fs" },
   },
   {
     id: "tool-3",
     type: "tool",
-    position: { x: 420, y: 280 },
+    position: { x: 380, y: 260 },
     data: { label: "bash", category: "shell" },
   },
   {
     id: "skill-1",
     type: "skill",
-    position: { x: 720, y: 140 },
+    position: { x: 680, y: 100 },
     data: { label: "harness-sdd", description: "Structured Design Doc" },
+  },
+  {
+    id: "skill-2",
+    type: "skill",
+    position: { x: 680, y: 220 },
+    data: { label: "code-review", description: "Review & suggest fixes" },
   },
   {
     id: "file-1",
     type: "file",
-    position: { x: 120, y: 320 },
+    position: { x: 80, y: 360 },
     data: { label: "src/main.rs", path: "src/main.rs" },
+  },
+  {
+    id: "file-2",
+    type: "file",
+    position: { x: 280, y: 360 },
+    data: { label: "Cargo.toml", path: "Cargo.toml" },
   },
 ];
 
@@ -96,8 +109,22 @@ const initialEdges: Edge[] = [
   },
   {
     id: "e5",
+    source: "agent-1",
+    target: "skill-2",
+    style: { stroke: "#8b5cf6" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#8b5cf6" },
+  },
+  {
+    id: "e6",
     source: "tool-2",
     target: "file-1",
+    style: { stroke: "#10b981" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
+  },
+  {
+    id: "e7",
+    source: "tool-1",
+    target: "file-2",
     style: { stroke: "#10b981" },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981" },
   },
@@ -133,19 +160,32 @@ export function GraphWorkspace() {
         onConnect={onConnect}
         nodeTypes={nodeTypes}
         fitView
+        fitViewOptions={{ padding: 0.2 }}
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{
           type: "smoothstep",
         }}
+        minZoom={0.2}
+        maxZoom={2}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2f3a" />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false} position="bottom-left" />
         <MiniMap
           nodeStrokeWidth={3}
           zoomable
           pannable
-          maskColor="rgba(15, 17, 21, 0.7)"
+          maskColor="rgba(15, 17, 21, 0.75)"
+          position="bottom-right"
         />
+        <Panel position="top-left" className="!m-2">
+          <div className="flex items-center gap-2 bg-[#161a22]/90 border border-border rounded-md px-2.5 py-1.5 text-[11px] text-gray-400 backdrop-blur">
+            <span className="text-blue-400 font-medium">Graph</span>
+            <span className="text-gray-600">|</span>
+            <span>{nodes.length} nodes</span>
+            <span className="text-gray-600">·</span>
+            <span>{edges.length} edges</span>
+          </div>
+        </Panel>
       </ReactFlow>
     </div>
   );
