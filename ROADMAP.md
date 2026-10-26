@@ -4,25 +4,21 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP5 | done | Shell, graph, harness, files, transcript, platform |
-| CP6 | done | Undo/redo, auto-layout, SVG export, command allowlist |
-| CP7 | next | Polish + deeper agent wiring (session import UX, multi-window keyboard) |
+| CP0–CP6 | done | Shell → platform → undo/layout/SVG/allowlist |
+| CP7 | done | Global shortcuts, help overlay, status bar, session import UX |
+| CP8 | later | Real agent process attach, fs watch, multi-project |
 
-## CP6 notes
+## CP7 notes
 
-- Graph history stack (add/remove/edit/layout); Ctrl/Cmd+Z / Shift+Z
-- `autoLayout` by node kind columns (no dagre dependency)
-- Domain → SVG export download
-- Shell `checkCommand` allowlist shared by web + Tauri front door
+- Keys `1–5` open/focus Graph / Harness / Runtime / Files / Shell
+- `?` help overlay · `Ctrl/⌘S` save project · Esc closes help
+- Top status bar: project name, graph size, host kind, live/replay
+- Runtime **Import**: presets, file picker, drag-and-drop JSONL, Load/Replay
 
-## Demo bar (ready to run)
+## Run
 
 ```bash
 git pull && npm install && npm run dev
 ```
 
-1. Agent Graph — edit, Undo, Layout, SVG
-2. Runtime — Run demo / paste transcript
-3. Harness — structure + inspector + links from graph
-4. Files — browse virtual tree, + graph, preview
-5. Shell — allowlisted commands
+Press `?` for shortcuts. Open Runtime → Import → Sample Claude-code → Replay.

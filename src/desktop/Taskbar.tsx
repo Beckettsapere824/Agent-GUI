@@ -1,15 +1,8 @@
+import { APP_DEFS, openAppById } from "./shortcuts";
 import { useOSStore } from "../store/osStore";
 
 export function Taskbar() {
-  const { windows, openWindow, focusWindow, toggleMinimize, activeWindowId } = useOSStore();
-
-  const apps = [
-    { id: "main-graph", title: "Agent Graph", type: "graph" as const },
-    { id: "harness", title: "Harness", type: "harness" as const },
-    { id: "runtime", title: "Runtime", type: "runtime" as const },
-    { id: "files", title: "Files", type: "files" as const },
-    { id: "logs", title: "Shell", type: "logs" as const },
-  ];
+  const { windows, activeWindowId } = useOSStore();
 
   return (
     <div className="absolute bottom-0 left-0 right-0 h-10 bg-[#0c0e14]/95 backdrop-blur-md border-t border-border flex items-center px-2 gap-1 z-[9999]">
@@ -25,7 +18,7 @@ export function Taskbar() {
       <div className="h-5 w-px bg-border mx-1" />
 
       <div className="flex items-center gap-0.5">
-        {apps.map((app) => {
+        {APP_DEFS.map((app) => {
           const existing = windows.find((w) => w.id === app.id);
           const isOpen = !!existing;
           const isActive = activeWindowId === app.id && !existing?.minimized;
@@ -40,26 +33,10 @@ export function Taskbar() {
                   ? "bg-white/5 text-gray-300 hover:bg-white/10"
                   : "text-gray-500 hover:bg-white/5 hover:text-gray-300"
               }`}
-              onClick={() => {
-                if (!existing) {
-                  openWindow({
-                    id: app.id,
-                    title: app.title,
-                    type: app.type,
-                    x: 60 + Math.random() * 100,
-                    y: 40 + Math.random() * 60,
-                    width: app.type === "graph" ? 1000 : 720,
-                    height: app.type === "graph" ? 640 : 480,
-                  });
-                } else if (existing.minimized) {
-                  toggleMinimize(app.id);
-                } else if (isActive) {
-                  toggleMinimize(app.id);
-                } else {
-                  focusWindow(app.id);
-                }
-              }}
+              title={`${app.title} (${app.key})`}
+              onClick={() => openAppById(app.id)}
             >
+              <span className="text-[9px] text-gray-600 font-mono hidden md:inline">{app.key}</span>
               {app.title}
               {isOpen && (
                 <span

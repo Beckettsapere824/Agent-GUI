@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { useOSStore } from "../store/osStore";
 import { Window } from "./Window";
 import { Taskbar } from "./Taskbar";
+import { StatusBar } from "./StatusBar";
+import { HelpOverlay } from "./HelpOverlay";
+import { useGlobalShortcuts } from "./useGlobalShortcuts";
 import { GraphWorkspace } from "../graph/GraphWorkspace";
 import { HarnessPanel } from "../harness/HarnessPanel";
 import { RuntimePanel } from "../runtime/RuntimePanel";
@@ -9,6 +13,8 @@ import { ShellPanel } from "../runtime/ShellPanel";
 
 export function Desktop() {
   const windows = useOSStore((s) => s.windows);
+  const [helpOpen, setHelpOpen] = useState(false);
+  useGlobalShortcuts({ helpOpen, setHelpOpen });
 
   return (
     <div className="relative w-full h-full bg-desktop overflow-hidden">
@@ -20,6 +26,8 @@ export function Desktop() {
           backgroundSize: "48px 48px",
         }}
       />
+
+      <StatusBar />
 
       {windows
         .filter((w) => !w.minimized)
@@ -35,6 +43,7 @@ export function Desktop() {
         ))}
 
       <Taskbar />
+      <HelpOverlay open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
