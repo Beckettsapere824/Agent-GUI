@@ -63,7 +63,14 @@ function parseGenericJsonl(text: string): ParseResult {
     try {
       const o = JSON.parse(lines[i]) as Record<string, unknown>;
       const label = String(o.label ?? o.name ?? o.tool ?? o.type ?? o.message ?? `event-${i}`);
-      const detail = o.detail != null ? String(o.detail) : o.path != null ? String(o.path) : o.input != null ? String(o.input) : undefined;
+      const detail =
+        o.detail != null
+          ? String(o.detail)
+          : o.path != null
+          ? String(o.path)
+          : o.input != null
+          ? String(o.input)
+          : undefined;
       const kind = asKind(o.kind ?? o.type ?? o.role);
       const nodeId =
         typeof o.nodeId === "string"
@@ -135,8 +142,7 @@ function parseClaudeCodeIsh(text: string): ParseResult {
         continue;
       }
 
-      // fall through to generic field mapping
-      const label = String(o.label ?? o.message ?? type || `event-${i}`);
+      const label = String(o.label ?? o.message ?? (type || `event-${i}`));
       events.push({
         kind: asKind(type),
         label,
@@ -169,17 +175,17 @@ export function parseTranscript(text: string): ParseResult {
 }
 
 /** Built-in demo transcript (same narrative as startDemoRun). */
-export const DEMO_TRANSCRIPT = `
-{"kind":"think","label":"Planning task","detail":"Fix build error in main.rs","nodeId":"agent-1"}
-{"kind":"tool","label":"read_file","detail":"src/main.rs","nodeId":"tool-1"}
-{"kind":"read","label":"Opened","detail":"src/main.rs","nodeId":"file-1"}
-{"kind":"tool","label":"read_file","detail":"Cargo.toml","nodeId":"tool-1"}
-{"kind":"read","label":"Opened","detail":"Cargo.toml","nodeId":"file-2"}
-{"kind":"think","label":"Analyzing","detail":"Missing dependency","nodeId":"agent-1"}
-{"kind":"tool","label":"bash","detail":"cargo check","nodeId":"tool-3"}
-{"kind":"tool","label":"write_file","detail":"src/main.rs","nodeId":"tool-2"}
-{"kind":"write","label":"Edited","detail":"src/main.rs (+12 −3)","nodeId":"file-1"}
-{"kind":"tool","label":"code-review","detail":"Reviewing patch","nodeId":"skill-2"}
-{"kind":"tool","label":"bash","detail":"cargo test","nodeId":"tool-3"}
-{"kind":"think","label":"Done","detail":"All tests passed","nodeId":"agent-1"}
-`.trim();
+export const DEMO_TRANSCRIPT = [
+  '{"kind":"think","label":"Planning task","detail":"Fix build error in main.rs","nodeId":"agent-1"}',
+  '{"kind":"tool","label":"read_file","detail":"src/main.rs","nodeId":"tool-1"}',
+  '{"kind":"read","label":"Opened","detail":"src/main.rs","nodeId":"file-1"}',
+  '{"kind":"tool","label":"read_file","detail":"Cargo.toml","nodeId":"tool-1"}',
+  '{"kind":"read","label":"Opened","detail":"Cargo.toml","nodeId":"file-2"}',
+  '{"kind":"think","label":"Analyzing","detail":"Missing dependency","nodeId":"agent-1"}',
+  '{"kind":"tool","label":"bash","detail":"cargo check","nodeId":"tool-3"}',
+  '{"kind":"tool","label":"write_file","detail":"src/main.rs","nodeId":"tool-2"}',
+  '{"kind":"write","label":"Edited","detail":"src/main.rs (+12 -3)","nodeId":"file-1"}',
+  '{"kind":"tool","label":"code-review","detail":"Reviewing patch","nodeId":"skill-2"}',
+  '{"kind":"tool","label":"bash","detail":"cargo test","nodeId":"tool-3"}',
+  '{"kind":"think","label":"Done","detail":"All tests passed","nodeId":"agent-1"}',
+].join("\n");
