@@ -5,6 +5,7 @@ import { GraphWorkspace } from "../graph/GraphWorkspace";
 import { HarnessPanel } from "../harness/HarnessPanel";
 import { RuntimePanel } from "../runtime/RuntimePanel";
 import { FilesPanel } from "../files/FilesPanel";
+import { ShellPanel } from "../runtime/ShellPanel";
 
 export function Desktop() {
   const windows = useOSStore((s) => s.windows);
@@ -29,12 +30,7 @@ export function Desktop() {
             {w.type === "harness" && <HarnessPanel />}
             {w.type === "runtime" && <RuntimePanel />}
             {w.type === "files" && <FilesPanel />}
-            {w.type === "logs" && (
-              <div className="flex flex-col items-center justify-center h-full text-muted text-sm gap-2">
-                <div className="text-gray-500 text-xs uppercase tracking-widest">logs</div>
-                <div className="text-gray-600 text-xs">merged into Runtime stream for now</div>
-              </div>
-            )}
+            {w.type === "logs" && <ShellPanel />}
           </Window>
         ))}
 

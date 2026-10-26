@@ -8,7 +8,7 @@ export function Taskbar() {
     { id: "harness", title: "Harness", type: "harness" as const },
     { id: "runtime", title: "Runtime", type: "runtime" as const },
     { id: "files", title: "Files", type: "files" as const },
-    { id: "logs", title: "Logs", type: "logs" as const },
+    { id: "logs", title: "Shell", type: "logs" as const },
   ];
 
   return (
