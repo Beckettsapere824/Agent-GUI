@@ -7,10 +7,17 @@ interface Props {
 }
 
 export function Window({ win, children }: Props) {
-  const { focusWindow, moveWindow, closeWindow, toggleMinimize, toggleMaximize } =
+  const { focusWindow, moveWindow, resizeWindow, closeWindow, toggleMinimize, toggleMaximize } =
     useOSStore();
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const resizeRef = useRef<{
+    startX: number;
+    startY: number;
+    origW: number;
+    origH: number;
+  } | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [resizing, setResizing] = useState(false);
 
   const onMouseDownTitle = useCallback(
     (e: React.MouseEvent) => {
@@ -45,6 +52,40 @@ export function Window({ win, children }: Props) {
     [win, focusWindow, moveWindow]
   );
 
+  const onMouseDownResize = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button !== 0 || win.maximized) return;
+      e.preventDefault();
+      e.stopPropagation();
+      focusWindow(win.id);
+      resizeRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        origW: win.width,
+        origH: win.height,
+      };
+      setResizing(true);
+
+      const onMove = (ev: MouseEvent) => {
+        if (!resizeRef.current) return;
+        const dx = ev.clientX - resizeRef.current.startX;
+        const dy = ev.clientY - resizeRef.current.startY;
+        resizeWindow(win.id, resizeRef.current.origW + dx, resizeRef.current.origH + dy);
+      };
+
+      const onUp = () => {
+        resizeRef.current = null;
+        setResizing(false);
+        globalThis.window.removeEventListener("mousemove", onMove);
+        globalThis.window.removeEventListener("mouseup", onUp);
+      };
+
+      globalThis.window.addEventListener("mousemove", onMove);
+      globalThis.window.addEventListener("mouseup", onUp);
+    },
+    [win, focusWindow, resizeWindow]
+  );
+
   const style: React.CSSProperties = win.maximized
     ? {
         left: 0,
@@ -64,12 +105,11 @@ export function Window({ win, children }: Props) {
   return (
     <div
       className={`absolute flex flex-col bg-panel border border-border rounded-lg shadow-2xl overflow-hidden ${
-        dragging ? "cursor-grabbing" : ""
+        dragging || resizing ? "cursor-default" : ""
       }`}
       style={style}
       onMouseDown={() => focusWindow(win.id)}
     >
-      {/* Title bar */}
       <div
         className="h-9 flex items-center justify-between px-3 bg-[#1a1f2a] border-b border-border select-none shrink-0"
         onMouseDown={onMouseDownTitle}
@@ -113,8 +153,18 @@ export function Window({ win, children }: Props) {
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-h-0 relative">{children}</div>
+
+      {!win.maximized && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+          onMouseDown={onMouseDownResize}
+          style={{
+            background:
+              "linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.12) 60%, transparent 60%)",
+          }}
+        />
+      )}
     </div>
   );
 }

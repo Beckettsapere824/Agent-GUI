@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   ReactFlow,
   Background,
@@ -19,6 +19,7 @@ import { AgentNode } from "./nodes/AgentNode";
 import { ToolNode } from "./nodes/ToolNode";
 import { SkillNode } from "./nodes/SkillNode";
 import { FileNode } from "./nodes/FileNode";
+import { useActivityStore } from "../store/activityStore";
 
 const nodeTypes = {
   agent: AgentNode,
@@ -131,8 +132,27 @@ const initialEdges: Edge[] = [
 ];
 
 export function GraphWorkspace() {
-  const [nodes, , onNodesChange] = useNodesState(initialNodes);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const activeNodeIds = useActivityStore((s) => s.activeNodeIds);
+  const running = useActivityStore((s) => s.running);
+
+  // Reflect activity onto node data (status / highlight)
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const active = !!activeNodeIds[n.id];
+        const prev = n.data as { status?: string; active?: boolean };
+        if (n.type === "agent") {
+          const status = running ? (active ? "running" : "busy") : "idle";
+          if (prev.status === status && prev.active === active) return n;
+          return { ...n, data: { ...n.data, status, active } };
+        }
+        if (prev.active === active) return n;
+        return { ...n, data: { ...n.data, active } };
+      })
+    );
+  }, [activeNodeIds, running, setNodes]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -184,6 +204,15 @@ export function GraphWorkspace() {
             <span>{nodes.length} nodes</span>
             <span className="text-gray-600">·</span>
             <span>{edges.length} edges</span>
+            {running && (
+              <>
+                <span className="text-gray-600">·</span>
+                <span className="text-green-400 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                  live
+                </span>
+              </>
+            )}
           </div>
         </Panel>
       </ReactFlow>
