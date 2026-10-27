@@ -31,11 +31,12 @@ export function openAppById(id: string) {
 }
 
 export const SHORTCUT_HELP: { keys: string; action: string }[] = [
+  { keys: "Ctrl/⌘ K", action: "Command palette (profiles, windows, runtime)" },
   { keys: "1 – 5", action: "Open / focus Graph, Harness, Runtime, Files, Shell" },
   { keys: "Ctrl/⌘ Z", action: "Undo graph edit" },
   { keys: "Ctrl/⌘ Shift Z", action: "Redo graph edit" },
   { keys: "Ctrl/⌘ S", action: "Save project (local)" },
-  { keys: "?", action: "Toggle this help" },
-  { keys: "Esc", action: "Close help / clear selection contexts" },
+  { keys: "?", action: "Toggle keyboard help" },
+  { keys: "Esc", action: "Close palette / help" },
   { keys: "Delete", action: "Remove selected graph node (when graph focused)" },
 ];

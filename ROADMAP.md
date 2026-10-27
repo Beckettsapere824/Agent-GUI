@@ -2,11 +2,12 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP14 | done | Shell → filters / notify |
-| CP15 | done | Session-scoped graph highlight; agent profiles |
-| CP16 | next | Profile ↔ harness binding; command palette profiles |
+| CP0–CP15 | done | Shell → session highlight / profiles |
+| CP16 | done | Profile ↔ harness binding; Ctrl+K command palette |
+| CP17 | next | Palette plugins; project export of profile pair |
 
-## CP15
+## CP16
 
-- Session filter dims unrelated nodes/edges; live pulse only on session-touched nodes
-- Profiles: Coding / Review / Research / Blank (Graph toolbar)
+- Each profile ships a matching **HarnessModel** (`applyProfile` updates graph + harness)
+- **Ctrl/⌘ K** command palette: windows, profiles, runtime demo/stop
+- Graph toolbar profiles use the same `applyProfile` path

@@ -1,5 +1,5 @@
 import type { NodeKind } from "../domain/types";
-import { AGENT_PROFILES } from "../domain/profiles";
+import { AGENT_PROFILES, applyProfile } from "../domain/profiles";
 import { useGraphStore } from "../store/graphStore";
 import { downloadSvg, graphToSvg } from "./exportSvg";
 import { useProjectStore } from "../store/projectStore";
@@ -13,7 +13,6 @@ const kinds: { kind: NodeKind; label: string; color: string }[] = [
 
 export function GraphToolbar() {
   const addNode = useGraphStore((s) => s.addNode);
-  const replaceGraph = useGraphStore((s) => s.replaceGraph);
   const nodeCount = useGraphStore((s) => s.graph.nodes.length);
   const edgeCount = useGraphStore((s) => s.graph.edges.length);
   const graph = useGraphStore((s) => s.graph);
@@ -23,20 +22,6 @@ export function GraphToolbar() {
   const futureLen = useGraphStore((s) => s.future.length);
   const layoutAuto = useGraphStore((s) => s.layoutAuto);
   const projectName = useProjectStore((s) => s.name);
-  const setName = useProjectStore((s) => s.setName);
-
-  const applyProfile = (id: string) => {
-    const p = AGENT_PROFILES.find((x) => x.id === id);
-    if (!p) return;
-    replaceGraph(JSON.parse(JSON.stringify(p.graph)));
-    if (setName) {
-      // optional: reflect profile in project title if still default
-      const n = useProjectStore.getState().name;
-      if (!n || n === "untitled-project" || n.endsWith("-project")) {
-        setName(`${p.id}-project`);
-      }
-    }
-  };
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -82,7 +67,7 @@ export function GraphToolbar() {
         <button
           key={p.id}
           className="h-6 px-2 rounded border border-border text-[11px] text-gray-300 hover:bg-white/5 hover:border-accent/40"
-          title={p.description}
+          title={`${p.description} (also applies matching harness)`}
           onClick={() => applyProfile(p.id)}
         >
           {p.name}
