@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
+import { current, isDraft } from "immer";
 import type { DomainEdge, DomainGraph, DomainNode, GraphNodeData, NodeKind } from "../domain/types";
 import { sampleDomainGraph } from "../domain/sampleGraph";
 import { autoLayout } from "../domain/layout";
@@ -14,7 +15,6 @@ interface GraphState {
   selectedEdgeId: string | null;
   setSelection: (nodeId: string | null, edgeId?: string | null) => void;
   addNode: (kind: NodeKind, x: number, y: number) => string;
-  /** Session-driven nodes: no undo history, no selection steal. */
   ensureNode: (
     kind: NodeKind,
     data: Partial<GraphNodeData> & { label: string },
@@ -22,7 +22,6 @@ interface GraphState {
     y: number
   ) => string;
   updateNodeData: (id: string, patch: Partial<GraphNodeData>) => void;
-  /** Patch without history (session metadata). */
   patchNodeDataSilent: (id: string, patch: Partial<GraphNodeData>) => void;
   moveNode: (id: string, x: number, y: number) => void;
   commitMove: () => void;
@@ -54,19 +53,25 @@ const defaultsFor = (kind: NodeKind): GraphNodeData => {
   }
 };
 
+/** structuredClone cannot copy Immer drafts — unwrap first. */
+function cloneGraph(g: DomainGraph): DomainGraph {
+  const plain = isDraft(g) ? current(g) : g;
+  return JSON.parse(JSON.stringify(plain)) as DomainGraph;
+}
+
 function pushHistory(s: {
   graph: DomainGraph;
   past: DomainGraph[];
   future: DomainGraph[];
 }) {
-  s.past.push(structuredClone(s.graph));
+  s.past.push(cloneGraph(s.graph));
   if (s.past.length > HISTORY_LIMIT) s.past.shift();
   s.future = [];
 }
 
 export const useGraphStore = create<GraphState>()(
   immer((set, get) => ({
-    graph: structuredClone(sampleDomainGraph),
+    graph: cloneGraph(sampleDomainGraph),
     past: [],
     future: [],
     selectedNodeId: null,
@@ -148,8 +153,9 @@ export const useGraphStore = create<GraphState>()(
     commitMove: () =>
       set((s) => {
         const top = s.past[s.past.length - 1];
-        if (top && JSON.stringify(top) === JSON.stringify(s.graph)) return;
-        s.past.push(structuredClone(s.graph));
+        const snap = cloneGraph(s.graph);
+        if (top && JSON.stringify(top) === JSON.stringify(snap)) return;
+        s.past.push(snap);
         if (s.past.length > HISTORY_LIMIT) s.past.shift();
         s.future = [];
       }),
@@ -198,7 +204,7 @@ export const useGraphStore = create<GraphState>()(
     replaceGraph: (g) =>
       set((s) => {
         pushHistory(s);
-        s.graph = structuredClone(g);
+        s.graph = cloneGraph(g);
         s.selectedNodeId = null;
         s.selectedEdgeId = null;
       }),
@@ -207,7 +213,7 @@ export const useGraphStore = create<GraphState>()(
       set((s) => {
         const prev = s.past.pop();
         if (!prev) return;
-        s.future.push(structuredClone(s.graph));
+        s.future.push(cloneGraph(s.graph));
         s.graph = prev;
         s.selectedNodeId = null;
         s.selectedEdgeId = null;
@@ -217,7 +223,7 @@ export const useGraphStore = create<GraphState>()(
       set((s) => {
         const next = s.future.pop();
         if (!next) return;
-        s.past.push(structuredClone(s.graph));
+        s.past.push(cloneGraph(s.graph));
         s.graph = next;
         s.selectedNodeId = null;
         s.selectedEdgeId = null;
@@ -229,7 +235,9 @@ export const useGraphStore = create<GraphState>()(
     layoutAuto: () =>
       set((s) => {
         pushHistory(s);
-        s.graph = autoLayout(s.graph);
+        // autoLayout expects plain graph; draft is fine if it only reads fields
+        const next = autoLayout(cloneGraph(s.graph));
+        s.graph = next;
       }),
   }))
 );
