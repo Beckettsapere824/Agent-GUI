@@ -46,11 +46,15 @@ export function checkCommand(cmd: string): { ok: true } | { ok: false; reason: s
   for (const re of DENIED) {
     if (re.test(c)) return { ok: false, reason: `blocked pattern: ${re}` };
   }
+  // echo with JSON payload used by stdio attach demos
+  if (/^echo\s+['"{]/.test(c) || c.startsWith("echo ")) {
+    return { ok: true };
+  }
   const allowed = ALLOWED_PREFIXES.some((p) => c === p.trim() || c.startsWith(p));
   if (!allowed) {
     return {
       ok: false,
-      reason: `not on allowlist (pwd, ls, echo, git status/log/diff, cargo check/test/build, …)`,
+      reason: `not on allowlist (pwd, ls, echo, git status/log/diff, cargo check/test/build, *--version)`,
     };
   }
   return { ok: true };

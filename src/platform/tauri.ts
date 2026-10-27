@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirEntry, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
+import type { DirEntry, FileMeta, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
 import { checkCommand } from "./allowlist";
 
 export const tauriPlatform: Platform = {
@@ -21,6 +21,10 @@ export const tauriPlatform: Platform = {
     await invoke("write_text_file", { path, content });
   },
 
+  async fileMeta(path: string): Promise<FileMeta> {
+    return invoke<FileMeta>("file_meta", { path });
+  },
+
   async runCommand(cmd: string, cwd?: string): Promise<RunCommandResult> {
     const gate = checkCommand(cmd);
     if (!gate.ok) {
@@ -37,21 +41,21 @@ export const tauriPlatform: Platform = {
     return invoke<string | null>("load_project_blob", { key });
   },
 
-  watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs = 1000): () => void {
-    // Poll via read until native notify watcher is wired in Rust.
-    let lastLen = -1;
+  watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs = 800): () => void {
+    let lastKey = "";
     const tick = async () => {
       try {
-        const text = await invoke<string>("read_text_file", { path });
-        if (text.length !== lastLen) {
+        const meta = await invoke<FileMeta>("file_meta", { path });
+        const key = `${meta.len}:${meta.modifiedMs ?? 0}`;
+        if (key !== lastKey) {
           const kind: FsWatchEvent["kind"] =
-            lastLen < 0 ? "create" : text.length === 0 ? "remove" : "modify";
-          lastLen = text.length;
-          onEvent({ path, kind });
+            lastKey === "" || lastKey === "missing" ? "create" : "modify";
+          lastKey = key;
+          onEvent({ path, kind, meta });
         }
       } catch {
-        if (lastLen >= 0) {
-          lastLen = -1;
+        if (lastKey !== "missing") {
+          lastKey = "missing";
           onEvent({ path, kind: "remove" });
         }
       }

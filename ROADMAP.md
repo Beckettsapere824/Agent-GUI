@@ -4,20 +4,20 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP8 | done | OS shell through multi-project + session API |
-| CP9 | done | Silent ensureNode/auto-map, live mode, Attach UI |
-| CP10 | partial | Stdio transport (one-shot via allowlist), `file_meta` on Tauri |
-| CP11 | next | Streaming spawn, native notify watcher |
+| CP0–CP9 | done | Shell → session auto-map |
+| CP10 | done | Stdio one-shot, file_meta command |
+| CP11 | partial | Meta-based watchPath, file-tail on watch, status session chip |
+| CP12 | next | True streaming spawn (Tauri async), notify crate |
 
-## CP9–10 notes
+## CP11 notes
 
-- `ensureNode` / `ensureEdge` — session graph mutations skip undo stack
-- Runtime **Attach**: Tail file, Stdio command, presets, auto-map toggle
-- `attachStdio` runs allowlisted command, parses stdout as JSONL, streams events
-- Tauri `file_meta` for efficient change detection (length/mtime)
+- `Platform.fileMeta` on web (virtual) + Tauri
+- `watchPath` compares len+mtime; FileTailSession reacts to watch instead of blind interval reads
+- Status bar shows `transport:status` for active session
+- Allowlist: explicit `echo` JSON payloads for stdio demos
 
-## Run
+## Architecture invariants
 
-```bash
-git pull && npm install --registry https://registry.npmjs.org && npm run dev
-```
+1. UI never imports `@tauri-apps/*` outside `src/platform/`
+2. Session graph mutations use `ensureNode` (no undo spam)
+3. Transcript adapter is the only log → event path

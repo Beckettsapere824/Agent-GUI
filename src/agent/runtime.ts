@@ -63,6 +63,7 @@ class DemoSession implements AgentSessionHandle {
   }
 }
 
+/** File-tail using platform.watchPath + readTextFile (meta-driven). */
 class FileTailSession implements AgentSessionHandle {
   private id: string;
   private label: string;
@@ -72,8 +73,9 @@ class FileTailSession implements AgentSessionHandle {
   private lastEventAt?: number;
   private error?: string;
   private offset = 0;
-  private timer: number | null = null;
+  private unwatch: (() => void) | null = null;
   private buffer = "";
+  private reading = false;
 
   constructor(path: string, label: string) {
     this.id = `sess-${++seq}`;
@@ -98,8 +100,12 @@ class FileTailSession implements AgentSessionHandle {
     this.status = "running";
     this.startedAt = Date.now();
     this.error = undefined;
+    this.offset = 0;
+    this.buffer = "";
 
-    const tick = async () => {
+    const readDelta = async () => {
+      if (this.reading) return;
+      this.reading = true;
       try {
         const { getPlatform } = await import("../platform");
         const p = await getPlatform();
@@ -107,43 +113,45 @@ class FileTailSession implements AgentSessionHandle {
         if (text.length < this.offset) this.offset = 0;
         const chunk = text.slice(this.offset);
         this.offset = text.length;
-        if (chunk) {
-          this.buffer += chunk;
-          const lines = this.buffer.split(/\r?\n/);
-          this.buffer = lines.pop() ?? "";
-          const joined = lines.filter(Boolean).join("\n");
-          if (joined) {
-            const parsed = parseTranscript(joined);
-            if (parsed.events.length) {
-              this.lastEventAt = Date.now();
-              onEvents(parsed.events);
-            }
+        if (!chunk) return;
+        this.buffer += chunk;
+        const lines = this.buffer.split(/\r?\n/);
+        this.buffer = lines.pop() ?? "";
+        const joined = lines.filter(Boolean).join("\n");
+        if (joined) {
+          const parsed = parseTranscript(joined);
+          if (parsed.events.length) {
+            this.lastEventAt = Date.now();
+            this.error = undefined;
+            onEvents(parsed.events);
           }
         }
       } catch (e) {
         this.error = String(e);
+      } finally {
+        this.reading = false;
       }
     };
 
-    void tick();
-    this.timer = window.setInterval(() => void tick(), 800) as unknown as number;
+    void (async () => {
+      const { getPlatform } = await import("../platform");
+      const p = await getPlatform();
+      void readDelta();
+      this.unwatch = p.watchPath(this.path, () => {
+        void readDelta();
+      }, 600);
+    })();
+
     return () => this.stop();
   }
 
   stop(): void {
-    if (this.timer != null) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    this.unwatch?.();
+    this.unwatch = null;
     if (this.status === "running") this.status = "stopped";
   }
 }
 
-/**
- * Stdio transport: on web, treats command as a one-shot shell (allowlisted)
- * and parses stdout as JSONL. On Tauri, same via platform.runCommand until
- * a streaming spawn command is wired.
- */
 class StdioSession implements AgentSessionHandle {
   private id: string;
   private label: string;
@@ -188,26 +196,22 @@ class StdioSession implements AgentSessionHandle {
         this.status = "running";
         const result = await p.runCommand(this.command, this.cwd);
         if (cancelled) return;
-        if (result.stderr) {
-          this.error = result.stderr.slice(0, 200);
-        }
-        const text = result.stdout || result.stderr;
+        if (result.stderr) this.error = result.stderr.slice(0, 200);
+        const text = result.stdout || "";
         const parsed = parseTranscript(text);
         if (parsed.events.length) {
-          // Stream in small batches so the graph lights progressively
-          const step = 200;
           for (let i = 0; i < parsed.events.length; i++) {
             if (cancelled) return;
-            await new Promise((r) => setTimeout(r, step));
+            await new Promise((r) => setTimeout(r, 180));
             this.lastEventAt = Date.now();
             onEvents([parsed.events[i]]);
           }
-        } else if (text.trim()) {
+        } else if (text.trim() || result.stderr) {
           onEvents([
             {
               kind: result.code === 0 ? "tool" : "error",
               label: this.command.slice(0, 48),
-              detail: text.slice(0, 160),
+              detail: (text || result.stderr).slice(0, 160),
             },
           ]);
         }

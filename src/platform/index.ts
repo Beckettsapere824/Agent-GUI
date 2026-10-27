@@ -1,7 +1,15 @@
 import type { Platform } from "./types";
 import { webPlatform } from "./web";
 
-export type { DirEntry, HostInfo, Platform, RunCommandResult, HostKind } from "./types";
+export type {
+  DirEntry,
+  FileMeta,
+  FsWatchEvent,
+  HostInfo,
+  HostKind,
+  Platform,
+  RunCommandResult,
+} from "./types";
 
 function detectTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;

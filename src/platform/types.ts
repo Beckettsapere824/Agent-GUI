@@ -22,9 +22,16 @@ export interface RunCommandResult {
   durationMs: number;
 }
 
+export interface FileMeta {
+  path: string;
+  len: number;
+  modifiedMs?: number | null;
+}
+
 export type FsWatchEvent = {
   path: string;
   kind: "create" | "modify" | "remove" | "unknown";
+  meta?: FileMeta;
 };
 
 export interface Platform {
@@ -33,12 +40,13 @@ export interface Platform {
   listDir(path: string): Promise<DirEntry[]>;
   readTextFile(path: string): Promise<string>;
   writeTextFile(path: string, content: string): Promise<void>;
+  fileMeta(path: string): Promise<FileMeta>;
   runCommand(cmd: string, cwd?: string): Promise<RunCommandResult>;
   saveProjectBlob(key: string, json: string): Promise<void>;
   loadProjectBlob(key: string): Promise<string | null>;
   /**
-   * Best-effort directory/file watch. Web: poll. Tauri: native when available.
-   * Returns unsubscribe.
+   * Best-effort file/dir watch via meta poll (len/mtime).
+   * Native notify still CP11+ on Tauri.
    */
   watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs?: number): () => void;
 }

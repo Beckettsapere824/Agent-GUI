@@ -1,4 +1,4 @@
-import type { DirEntry, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
+import type { DirEntry, FileMeta, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
 import { checkCommand } from "./allowlist";
 
 const VIRTUAL: Record<string, string | null> = {
@@ -21,6 +21,13 @@ const VIRTUAL: Record<string, string | null> = {
   "sessions/": null,
   "sessions/demo.jsonl": "",
 };
+
+/** Synthetic mtime for virtual files */
+const VMTIME: Record<string, number> = {};
+
+function touch(path: string) {
+  VMTIME[path] = Date.now();
+}
 
 function normalize(path: string): string {
   const p = path.replace(/\\/g, "/").replace(/^\.\//, "");
@@ -82,11 +89,26 @@ export const webPlatform: Platform = {
   async writeTextFile(path: string, content: string): Promise<void> {
     const p = path.replace(/\\/g, "/");
     VIRTUAL[p] = content;
+    touch(p);
     let dir = parentDir(p);
     while (dir) {
       if (!(dir in VIRTUAL)) VIRTUAL[dir] = null;
       dir = parentDir(dir.replace(/\/$/, ""));
     }
+  },
+
+  async fileMeta(path: string): Promise<FileMeta> {
+    const p = path.replace(/\\/g, "/");
+    if (!(p in VIRTUAL) && VIRTUAL[p + "/"] === undefined) {
+      throw new Error(`File not found: ${path}`);
+    }
+    if (VIRTUAL[p + "/"] === null) throw new Error(`Is a directory: ${path}`);
+    const content = VIRTUAL[p] ?? "";
+    return {
+      path: p,
+      len: content.length,
+      modifiedMs: VMTIME[p] ?? 0,
+    };
   },
 
   async runCommand(cmd: string, _cwd?: string): Promise<RunCommandResult> {
@@ -135,15 +157,32 @@ export const webPlatform: Platform = {
     return localStorage.getItem(`agent-os:${key}`);
   },
 
-  watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs = 1000): () => void {
-    let last = "";
+  watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs = 800): () => void {
     const p = path.replace(/\\/g, "/");
+    let lastKey = "";
     const tick = () => {
-      const cur = p in VIRTUAL ? String(VIRTUAL[p] ?? "") : "";
-      if (cur !== last) {
-        const kind: FsWatchEvent["kind"] = last === "" ? "create" : cur === "" ? "remove" : "modify";
-        last = cur;
-        onEvent({ path: p, kind });
+      try {
+        const content = p in VIRTUAL ? String(VIRTUAL[p] ?? "") : null;
+        if (content === null && !(p in VIRTUAL)) {
+          if (lastKey !== "missing") {
+            lastKey = "missing";
+            onEvent({ path: p, kind: "remove" });
+          }
+          return;
+        }
+        const key = `${content?.length ?? 0}:${VMTIME[p] ?? 0}`;
+        if (key !== lastKey) {
+          const kind: FsWatchEvent["kind"] =
+            lastKey === "" || lastKey === "missing" ? "create" : "modify";
+          lastKey = key;
+          onEvent({
+            path: p,
+            kind,
+            meta: { path: p, len: content?.length ?? 0, modifiedMs: VMTIME[p] ?? 0 },
+          });
+        }
+      } catch {
+        /* ignore */
       }
     };
     tick();

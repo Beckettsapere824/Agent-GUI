@@ -3,6 +3,7 @@ import { getPlatform, isTauriRuntime } from "../platform";
 import { useActivityStore } from "../store/activityStore";
 import { useProjectStore } from "../store/projectStore";
 import { useGraphStore } from "../store/graphStore";
+import { useSessionStore } from "../store/sessionStore";
 
 export function StatusBar() {
   const [host, setHost] = useState(isTauriRuntime() ? "tauri" : "web");
@@ -11,6 +12,9 @@ export function StatusBar() {
   const name = useProjectStore((s) => s.name);
   const nodes = useGraphStore((s) => s.graph.nodes.length);
   const edges = useGraphStore((s) => s.graph.edges.length);
+  const sessions = useSessionStore((s) => s.sessions);
+  const activeId = useSessionStore((s) => s.activeId);
+  const active = sessions.find((s) => s.id === activeId);
 
   useEffect(() => {
     void getPlatform().then((p) => setHost(p.kind));
@@ -25,6 +29,14 @@ export function StatusBar() {
       </span>
       <span className="mx-2 text-gray-700">·</span>
       <span className="uppercase tracking-wide">{host}</span>
+      {active && (
+        <>
+          <span className="mx-2 text-gray-700">·</span>
+          <span className="text-sky-400/90">
+            {active.transport}:{active.status}
+          </span>
+        </>
+      )}
       {running && (
         <>
           <span className="mx-2 text-gray-700">·</span>
