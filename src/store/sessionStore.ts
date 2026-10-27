@@ -26,11 +26,11 @@ interface SessionState {
 /** Per-session unsubscribe for event pumps. */
 const unsubs = new Map<string, () => void>();
 
-function ingest(batch: NormalizedEvent[], autoMap: boolean) {
+function ingest(batch: NormalizedEvent[], autoMap: boolean, sessionId: string) {
   for (const e of batch) {
     let nodeId = e.nodeId;
     if (autoMap) nodeId = autoMapEvent(e) ?? nodeId;
-    useActivityStore.getState().push({ ...e, nodeId });
+    useActivityStore.getState().push({ ...e, nodeId, sessionId });
   }
 }
 
@@ -48,7 +48,7 @@ function bindHandle(h: {
   const id = h.info().id;
   useActivityStore.setState({ running: true, mode: "live" });
   const stopPump = h.start((batch) => {
-    ingest(batch, useSessionStore.getState().autoMap);
+    ingest(batch, useSessionStore.getState().autoMap, id);
     const info = h.info();
     if (info.status === "stopped" || info.status === "error") {
       unsubs.delete(id);
@@ -66,6 +66,7 @@ function bindHandle(h: {
     activeId: id,
     sessions: agentRuntime.listSessions(),
   });
+  useActivityStore.getState().setFilterSessionId(id);
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -76,7 +77,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   setAutoMap: (v) => set({ autoMap: v }),
   setExclusive: (v) => set({ exclusive: v }),
-  setActive: (id) => set({ activeId: id }),
+  setActive: (id) => {
+    set({ activeId: id });
+    if (id) useActivityStore.getState().setFilterSessionId(id);
+  },
 
   refresh: () => set({ sessions: agentRuntime.listSessions() }),
 
@@ -106,7 +110,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     u?.();
     unsubs.delete(id);
     agentRuntime.detach(id);
-    // best-effort kill OS child (Tauri)
     void import("../platform").then(async ({ getPlatform }) => {
       const p = await getPlatform();
       if (p.killStream) await p.killStream(id).catch(() => undefined);
@@ -125,7 +128,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       get().stopSession(id);
       return;
     }
-    // no active marked — stop all running
     for (const s of agentRuntime.listSessions()) {
       if (s.status === "running" || s.status === "starting") {
         get().stopSession(s.id);
@@ -145,7 +147,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         if (p.killStream) await p.killStream(s.id).catch(() => undefined);
       });
     }
-    useActivityStore.setState({ running: false, mode: "idle" });
+    useActivityStore.setState({ running: false, mode: "idle", filterSessionId: null });
     set({ activeId: null, sessions: [] });
   },
 }));
