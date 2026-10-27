@@ -1,9 +1,10 @@
 use serde::Serialize;
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::Instant;
+use tauri::{AppHandle, Emitter};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +38,22 @@ struct FileMeta {
     path: String,
     len: u64,
     modified_ms: Option<u64>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StdioLineEvent {
+    session_id: String,
+    stream: String,
+    line: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StdioEndEvent {
+    session_id: String,
+    code: i32,
+    duration_ms: u128,
 }
 
 fn resolve_path(path: &str) -> PathBuf {
@@ -143,7 +160,7 @@ fn run_command(cmd: String, cwd: Option<String>) -> Result<RunCommandResult, Str
     let output = {
         let mut c = Command::new("cmd");
         c.args(["/C", &cmd]);
-        if let Some(dir) = cwd {
+        if let Some(dir) = &cwd {
             c.current_dir(dir);
         }
         c.output()
@@ -152,7 +169,7 @@ fn run_command(cmd: String, cwd: Option<String>) -> Result<RunCommandResult, Str
     let output = {
         let mut c = Command::new("sh");
         c.args(["-c", &cmd]);
-        if let Some(dir) = cwd {
+        if let Some(dir) = &cwd {
             c.current_dir(dir);
         }
         c.output()
@@ -165,6 +182,127 @@ fn run_command(cmd: String, cwd: Option<String>) -> Result<RunCommandResult, Str
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         duration_ms: start.elapsed().as_millis(),
     })
+}
+
+/// Spawn shell command and emit line events to the frontend.
+/// Events: `agent-os://stdio-line`, `agent-os://stdio-end`
+#[tauri::command]
+fn stream_command(
+    app: AppHandle,
+    session_id: String,
+    cmd: String,
+    cwd: Option<String>,
+) -> Result<(), String> {
+    let session_id_thread = session_id.clone();
+    std::thread::spawn(move || {
+        let start = Instant::now();
+        #[cfg(target_os = "windows")]
+        let mut child = {
+            let mut c = Command::new("cmd");
+            c.args(["/C", &cmd])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if let Some(dir) = &cwd {
+                c.current_dir(dir);
+            }
+            match c.spawn() {
+                Ok(ch) => ch,
+                Err(e) => {
+                    let _ = app.emit(
+                        "agent-os://stdio-line",
+                        StdioLineEvent {
+                            session_id: session_id_thread.clone(),
+                            stream: "stderr".into(),
+                            line: e.to_string(),
+                        },
+                    );
+                    let _ = app.emit(
+                        "agent-os://stdio-end",
+                        StdioEndEvent {
+                            session_id: session_id_thread,
+                            code: -1,
+                            duration_ms: start.elapsed().as_millis(),
+                        },
+                    );
+                    return;
+                }
+            }
+        };
+        #[cfg(not(target_os = "windows"))]
+        let mut child = {
+            let mut c = Command::new("sh");
+            c.args(["-c", &cmd])
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+            if let Some(dir) = &cwd {
+                c.current_dir(dir);
+            }
+            match c.spawn() {
+                Ok(ch) => ch,
+                Err(e) => {
+                    let _ = app.emit(
+                        "agent-os://stdio-line",
+                        StdioLineEvent {
+                            session_id: session_id_thread.clone(),
+                            stream: "stderr".into(),
+                            line: e.to_string(),
+                        },
+                    );
+                    let _ = app.emit(
+                        "agent-os://stdio-end",
+                        StdioEndEvent {
+                            session_id: session_id_thread,
+                            code: -1,
+                            duration_ms: start.elapsed().as_millis(),
+                        },
+                    );
+                    return;
+                }
+            }
+        };
+
+        if let Some(out) = child.stdout.take() {
+            let reader = BufReader::new(out);
+            for line in reader.lines().flatten() {
+                let _ = app.emit(
+                    "agent-os://stdio-line",
+                    StdioLineEvent {
+                        session_id: session_id_thread.clone(),
+                        stream: "stdout".into(),
+                        line,
+                    },
+                );
+            }
+        }
+        if let Some(err) = child.stderr.take() {
+            let reader = BufReader::new(err);
+            for line in reader.lines().flatten() {
+                let _ = app.emit(
+                    "agent-os://stdio-line",
+                    StdioLineEvent {
+                        session_id: session_id_thread.clone(),
+                        stream: "stderr".into(),
+                        line,
+                    },
+                );
+            }
+        }
+
+        let code = child
+            .wait()
+            .ok()
+            .and_then(|s| s.code())
+            .unwrap_or(-1);
+        let _ = app.emit(
+            "agent-os://stdio-end",
+            StdioEndEvent {
+                session_id: session_id_thread,
+                code,
+                duration_ms: start.elapsed().as_millis(),
+            },
+        );
+    });
+    Ok(())
 }
 
 fn project_blob_path(key: &str) -> Result<PathBuf, String> {
@@ -210,6 +348,7 @@ pub fn run() {
             file_meta,
             write_text_file,
             run_command,
+            stream_command,
             save_project_blob,
             load_project_blob,
         ])

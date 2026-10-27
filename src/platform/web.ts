@@ -1,4 +1,13 @@
-import type { DirEntry, FileMeta, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
+import type {
+  DirEntry,
+  FileMeta,
+  FsWatchEvent,
+  HostInfo,
+  Platform,
+  RunCommandResult,
+  StdioEnd,
+  StdioLine,
+} from "./types";
 import { checkCommand } from "./allowlist";
 
 const VIRTUAL: Record<string, string | null> = {
@@ -22,7 +31,6 @@ const VIRTUAL: Record<string, string | null> = {
   "sessions/demo.jsonl": "",
 };
 
-/** Synthetic mtime for virtual files */
 const VMTIME: Record<string, number> = {};
 
 function touch(path: string) {
@@ -104,11 +112,7 @@ export const webPlatform: Platform = {
     }
     if (VIRTUAL[p + "/"] === null) throw new Error(`Is a directory: ${path}`);
     const content = VIRTUAL[p] ?? "";
-    return {
-      path: p,
-      len: content.length,
-      modifiedMs: VMTIME[p] ?? 0,
-    };
+    return { path: p, len: content.length, modifiedMs: VMTIME[p] ?? 0 };
   },
 
   async runCommand(cmd: string, _cwd?: string): Promise<RunCommandResult> {
@@ -139,13 +143,42 @@ export const webPlatform: Platform = {
       stdout = `web stub: would run: ${c}\n`;
     } else {
       stderr = `web stub: ${c}\n`;
-      code = 0;
     }
     return {
       code,
       stdout,
       stderr,
       durationMs: Math.round(performance.now() - start),
+    };
+  },
+
+  async streamCommand(
+    sessionId: string,
+    cmd: string,
+    cwd: string | undefined,
+    onLine: (ev: StdioLine) => void,
+    onEnd: (ev: StdioEnd) => void
+  ): Promise<() => void> {
+    let cancelled = false;
+    void (async () => {
+      const result = await webPlatform.runCommand(cmd, cwd);
+      if (cancelled) return;
+      const lines = (result.stdout || "").split(/\r?\n/).filter((l) => l.length > 0);
+      for (const line of lines) {
+        if (cancelled) return;
+        onLine({ sessionId, stream: "stdout", line });
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      if (result.stderr) {
+        for (const line of result.stderr.split(/\r?\n/).filter(Boolean)) {
+          if (cancelled) return;
+          onLine({ sessionId, stream: "stderr", line });
+        }
+      }
+      onEnd({ sessionId, code: result.code, durationMs: result.durationMs });
+    })();
+    return () => {
+      cancelled = true;
     };
   },
 

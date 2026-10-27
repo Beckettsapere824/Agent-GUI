@@ -1,5 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { DirEntry, FileMeta, FsWatchEvent, HostInfo, Platform, RunCommandResult } from "./types";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  DirEntry,
+  FileMeta,
+  FsWatchEvent,
+  HostInfo,
+  Platform,
+  RunCommandResult,
+  StdioEnd,
+  StdioLine,
+} from "./types";
 import { checkCommand } from "./allowlist";
 
 export const tauriPlatform: Platform = {
@@ -31,6 +41,43 @@ export const tauriPlatform: Platform = {
       return { code: 126, stdout: "", stderr: `allowlist: ${gate.reason}\n`, durationMs: 0 };
     }
     return invoke<RunCommandResult>("run_command", { cmd, cwd: cwd ?? null });
+  },
+
+  async streamCommand(
+    sessionId: string,
+    cmd: string,
+    cwd: string | undefined,
+    onLine: (ev: StdioLine) => void,
+    onEnd: (ev: StdioEnd) => void
+  ): Promise<() => void> {
+    const gate = checkCommand(cmd);
+    if (!gate.ok) {
+      onLine({ sessionId, stream: "stderr", line: `allowlist: ${gate.reason}` });
+      onEnd({ sessionId, code: 126, durationMs: 0 });
+      return () => {};
+    }
+
+    const unsubs: UnlistenFn[] = [];
+    unsubs.push(
+      await listen<StdioLine>("agent-os://stdio-line", (e) => {
+        if (e.payload?.sessionId === sessionId) onLine(e.payload);
+      })
+    );
+    unsubs.push(
+      await listen<StdioEnd>("agent-os://stdio-end", (e) => {
+        if (e.payload?.sessionId === sessionId) onEnd(e.payload);
+      })
+    );
+
+    await invoke("stream_command", {
+      sessionId,
+      cmd,
+      cwd: cwd ?? null,
+    });
+
+    return () => {
+      for (const u of unsubs) void u();
+    };
   },
 
   async saveProjectBlob(key: string, json: string): Promise<void> {

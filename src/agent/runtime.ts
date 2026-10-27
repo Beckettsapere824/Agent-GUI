@@ -63,7 +63,6 @@ class DemoSession implements AgentSessionHandle {
   }
 }
 
-/** File-tail using platform.watchPath + readTextFile (meta-driven). */
 class FileTailSession implements AgentSessionHandle {
   private id: string;
   private label: string;
@@ -152,6 +151,7 @@ class FileTailSession implements AgentSessionHandle {
   }
 }
 
+/** Stdio via platform.streamCommand (Tauri real stream / web synthetic). */
 class StdioSession implements AgentSessionHandle {
   private id: string;
   private label: string;
@@ -161,7 +161,7 @@ class StdioSession implements AgentSessionHandle {
   private startedAt?: number;
   private lastEventAt?: number;
   private error?: string;
-  private stopFn: (() => void) | null = null;
+  private unsub: (() => void) | null = null;
 
   constructor(opts: StdioAttachOptions) {
     this.id = `sess-${++seq}`;
@@ -187,52 +187,48 @@ class StdioSession implements AgentSessionHandle {
     this.status = "starting";
     this.startedAt = Date.now();
     this.error = undefined;
-    let cancelled = false;
 
     void (async () => {
       try {
         const { getPlatform } = await import("../platform");
         const p = await getPlatform();
         this.status = "running";
-        const result = await p.runCommand(this.command, this.cwd);
-        if (cancelled) return;
-        if (result.stderr) this.error = result.stderr.slice(0, 200);
-        const text = result.stdout || "";
-        const parsed = parseTranscript(text);
-        if (parsed.events.length) {
-          for (let i = 0; i < parsed.events.length; i++) {
-            if (cancelled) return;
-            await new Promise((r) => setTimeout(r, 180));
+        this.unsub = await p.streamCommand(
+          this.id,
+          this.command,
+          this.cwd,
+          (line) => {
             this.lastEventAt = Date.now();
-            onEvents([parsed.events[i]]);
+            if (line.stream === "stderr") {
+              this.error = line.line.slice(0, 200);
+              onEvents([{ kind: "error", label: "stderr", detail: line.line.slice(0, 160) }]);
+              return;
+            }
+            const parsed = parseTranscript(line.line);
+            if (parsed.events.length) {
+              onEvents(parsed.events);
+            } else if (line.line.trim()) {
+              onEvents([{ kind: "tool", label: line.line.slice(0, 48), detail: line.line.slice(0, 120) }]);
+            }
+          },
+          (end) => {
+            this.status = end.code === 0 ? "stopped" : "error";
+            if (end.code !== 0 && !this.error) this.error = `exit ${end.code}`;
           }
-        } else if (text.trim() || result.stderr) {
-          onEvents([
-            {
-              kind: result.code === 0 ? "tool" : "error",
-              label: this.command.slice(0, 48),
-              detail: (text || result.stderr).slice(0, 160),
-            },
-          ]);
-        }
-        this.status = result.code === 0 ? "stopped" : "error";
-        if (result.code !== 0 && !this.error) this.error = `exit ${result.code}`;
+        );
       } catch (e) {
         this.status = "error";
         this.error = String(e);
       }
     })();
 
-    this.stopFn = () => {
-      cancelled = true;
-      if (this.status === "running" || this.status === "starting") this.status = "stopped";
-    };
     return () => this.stop();
   }
 
   stop(): void {
-    this.stopFn?.();
-    this.stopFn = null;
+    this.unsub?.();
+    this.unsub = null;
+    if (this.status === "running" || this.status === "starting") this.status = "stopped";
   }
 }
 

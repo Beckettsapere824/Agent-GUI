@@ -34,6 +34,9 @@ export type FsWatchEvent = {
   meta?: FileMeta;
 };
 
+export type StdioLine = { sessionId: string; stream: "stdout" | "stderr" | string; line: string };
+export type StdioEnd = { sessionId: string; code: number; durationMs: number };
+
 export interface Platform {
   kind: HostKind;
   hostInfo(): Promise<HostInfo>;
@@ -42,11 +45,19 @@ export interface Platform {
   writeTextFile(path: string, content: string): Promise<void>;
   fileMeta(path: string): Promise<FileMeta>;
   runCommand(cmd: string, cwd?: string): Promise<RunCommandResult>;
+  /**
+   * Stream stdout/stderr lines when host supports it (Tauri).
+   * Web falls back to one-shot runCommand + synthetic line events.
+   * Returns unsubscribe.
+   */
+  streamCommand(
+    sessionId: string,
+    cmd: string,
+    cwd: string | undefined,
+    onLine: (ev: StdioLine) => void,
+    onEnd: (ev: StdioEnd) => void
+  ): Promise<() => void>;
   saveProjectBlob(key: string, json: string): Promise<void>;
   loadProjectBlob(key: string): Promise<string | null>;
-  /**
-   * Best-effort file/dir watch via meta poll (len/mtime).
-   * Native notify still CP11+ on Tauri.
-   */
   watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs?: number): () => void;
 }
