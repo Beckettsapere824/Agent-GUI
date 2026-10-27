@@ -94,26 +94,63 @@ export const tauriPlatform: Platform = {
   },
 
   watchPath(path: string, onEvent: (ev: FsWatchEvent) => void, intervalMs = 800): () => void {
-    let lastKey = "";
-    const tick = async () => {
-      try {
-        const meta = await invoke<FileMeta>("file_meta", { path });
-        const key = `${meta.len}:${meta.modifiedMs ?? 0}`;
-        if (key !== lastKey) {
-          const kind: FsWatchEvent["kind"] =
-            lastKey === "" || lastKey === "missing" ? "create" : "modify";
-          lastKey = key;
-          onEvent({ path, kind, meta });
+    const watchId = `w-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
+    let pollUnsub: (() => void) | null = null;
+
+    const startPoll = () => {
+      let lastKey = "";
+      const tick = async () => {
+        try {
+          const meta = await invoke<FileMeta>("file_meta", { path });
+          const key = `${meta.len}:${meta.modifiedMs ?? 0}`;
+          if (key !== lastKey) {
+            const kind: FsWatchEvent["kind"] =
+              lastKey === "" || lastKey === "missing" ? "create" : "modify";
+            lastKey = key;
+            onEvent({ path, kind, meta });
+          }
+        } catch {
+          if (lastKey !== "missing") {
+            lastKey = "missing";
+            onEvent({ path, kind: "remove" });
+          }
         }
-      } catch {
-        if (lastKey !== "missing") {
-          lastKey = "missing";
-          onEvent({ path, kind: "remove" });
-        }
-      }
+      };
+      void tick();
+      const id = window.setInterval(() => void tick(), intervalMs);
+      pollUnsub = () => clearInterval(id);
     };
-    void tick();
-    const id = window.setInterval(() => void tick(), intervalMs);
-    return () => clearInterval(id);
+
+    void (async () => {
+      try {
+        unlisten = await listen<{ watchId: string; path: string; kind: string }>(
+          "agent-os://fs-event",
+          (e) => {
+            if (cancelled || e.payload?.watchId !== watchId) return;
+            const k = e.payload.kind;
+            if (k.startsWith("error")) return;
+            const kind: FsWatchEvent["kind"] =
+              k === "create" || k === "modify" || k === "remove" ? k : "unknown";
+            onEvent({ path: e.payload.path || path, kind });
+          }
+        );
+        await invoke("watch_path_native", { path, watchId });
+      } catch {
+        if (unlisten) {
+          void unlisten();
+          unlisten = null;
+        }
+        startPoll();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unlisten) void unlisten();
+      pollUnsub?.();
+      void invoke("unwatch_path_native", { watchId }).catch(() => undefined);
+    };
   },
 };
