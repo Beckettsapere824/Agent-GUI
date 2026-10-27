@@ -21,7 +21,13 @@ const kindBadge: Record<string, string> = {
 };
 
 export function RuntimePanel() {
-  const events = useActivityStore((s) => s.events);
+  const allEvents = useActivityStore((s) => s.events);
+  const filterSessionId = useActivityStore((s) => s.filterSessionId);
+  const setFilterSessionId = useActivityStore((s) => s.setFilterSessionId);
+  const events =
+    filterSessionId == null
+      ? allEvents
+      : allEvents.filter((e) => !e.sessionId || e.sessionId === filterSessionId);
   const running = useActivityStore((s) => s.running);
   const mode = useActivityStore((s) => s.mode);
   const clear = useActivityStore((s) => s.clear);
@@ -167,13 +173,27 @@ export function RuntimePanel() {
       {sessions.length > 0 && (
         <div className="border-b border-border bg-[#0c0e14] px-2 py-1.5 flex flex-wrap gap-1.5 items-center">
           <span className="text-[10px] text-gray-600 uppercase tracking-wide mr-1">Sessions</span>
+          <button
+            type="button"
+            className={`h-6 px-2 rounded text-[10px] border ${
+              filterSessionId == null
+                ? "border-accent/40 bg-accent/10 text-accent"
+                : "border-border text-gray-500 hover:bg-white/5"
+            }`}
+            onClick={() => setFilterSessionId(null)}
+          >
+            all
+          </button>
           {sessions.map((s) => (
             <button
               key={s.id}
               type="button"
-              onClick={() => setActive(s.id)}
+              onClick={() => {
+                setActive(s.id);
+                setFilterSessionId(s.id);
+              }}
               className={`group flex items-center gap-1.5 h-6 pl-2 pr-1 rounded text-[10px] border ${
-                s.id === activeId
+                s.id === filterSessionId || (filterSessionId == null && s.id === activeId)
                   ? "border-accent/40 bg-accent/10 text-accent"
                   : "border-border text-gray-400 hover:bg-white/5"
               }`}
