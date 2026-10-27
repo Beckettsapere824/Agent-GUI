@@ -1,89 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AGENT_PROFILES, applyProfile } from "../domain/profiles";
-import { useSessionStore } from "../store/sessionStore";
-import { APP_DEFS, openAppById } from "./shortcuts";
-
-export type PaletteAction = {
-  id: string;
-  group: string;
-  label: string;
-  hint?: string;
-  run: () => void;
-};
+import { ensureBuiltinPalettePlugins } from "./builtinPalettePlugins";
+import { collectPluginActions, type PaletteAction } from "./palettePlugins";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
-function buildActions(onClose: () => void): PaletteAction[] {
-  const actions: PaletteAction[] = [];
-
-  for (const a of APP_DEFS) {
-    actions.push({
-      id: `app-${a.id}`,
-      group: "Windows",
-      label: `Open ${a.title}`,
-      hint: a.key,
-      run: () => {
-        openAppById(a.id);
-        onClose();
-      },
-    });
-  }
-
-  for (const p of AGENT_PROFILES) {
-    actions.push({
-      id: `profile-${p.id}`,
-      group: "Profiles",
-      label: `Profile: ${p.name}`,
-      hint: p.description,
-      run: () => {
-        applyProfile(p.id);
-        openAppById("main-graph");
-        onClose();
-      },
-    });
-  }
-
-  actions.push({
-    id: "runtime-demo",
-    group: "Runtime",
-    label: "Run session demo",
-    run: () => {
-      openAppById("runtime");
-      useSessionStore.getState().startDemo();
-      onClose();
-    },
-  });
-  actions.push({
-    id: "runtime-stop",
-    group: "Runtime",
-    label: "Stop active session",
-    run: () => {
-      useSessionStore.getState().stopActive();
-      onClose();
-    },
-  });
-
-  return actions;
-}
-
 export function CommandPalette({ open, onClose }: Props) {
   const [q, setQ] = useState("");
   const [idx, setIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const actions = useMemo(() => buildActions(onClose), [onClose]);
+
+  const actions = useMemo(() => {
+    ensureBuiltinPalettePlugins();
+    return collectPluginActions(onClose);
+  }, [onClose, open]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return actions;
-    return actions.filter(
-      (a) =>
-        a.label.toLowerCase().includes(s) ||
-        a.group.toLowerCase().includes(s) ||
-        (a.hint && a.hint.toLowerCase().includes(s))
-    );
+    return actions.filter((a) => {
+      const hay = [a.label, a.group, a.hint, ...(a.keywords ?? [])]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(s);
+    });
   }, [actions, q]);
 
   useEffect(() => {
@@ -104,6 +47,9 @@ export function CommandPalette({ open, onClose }: Props) {
     const a = filtered[i];
     if (a) a.run();
   };
+
+  // group labels for visual separators
+  let lastGroup = "";
 
   return (
     <div
@@ -135,7 +81,7 @@ export function CommandPalette({ open, onClose }: Props) {
                 runIdx(idx);
               }
             }}
-            placeholder="Profiles, windows, runtime…"
+            placeholder="Profiles, windows, export, runtime…"
             className="flex-1 h-11 bg-transparent text-sm text-gray-100 outline-none placeholder:text-gray-600"
           />
         </div>
@@ -143,26 +89,32 @@ export function CommandPalette({ open, onClose }: Props) {
           {filtered.length === 0 && (
             <li className="px-4 py-3 text-xs text-gray-600">No matches</li>
           )}
-          {filtered.map((a, i) => (
-            <li key={a.id}>
-              <button
-                type="button"
-                className={`w-full flex items-center gap-3 px-4 py-2 text-left text-sm ${
-                  i === idx ? "bg-accent/15 text-accent" : "text-gray-300 hover:bg-white/5"
-                }`}
-                onMouseEnter={() => setIdx(i)}
-                onClick={() => a.run()}
-              >
-                <span className="text-[10px] uppercase tracking-wide text-gray-600 w-16 shrink-0">
-                  {a.group}
-                </span>
-                <span className="flex-1 truncate">{a.label}</span>
-                {a.hint && (
-                  <span className="text-[10px] text-gray-600 truncate max-w-[40%]">{a.hint}</span>
+          {filtered.map((a, i) => {
+            const showGroup = a.group !== lastGroup;
+            lastGroup = a.group;
+            return (
+              <li key={a.id}>
+                {showGroup && (
+                  <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wide text-gray-600">
+                    {a.group}
+                  </div>
                 )}
-              </button>
-            </li>
-          ))}
+                <button
+                  type="button"
+                  className={`w-full flex items-center gap-3 px-4 py-2 text-left text-sm ${
+                    i === idx ? "bg-accent/15 text-accent" : "text-gray-300 hover:bg-white/5"
+                  }`}
+                  onMouseEnter={() => setIdx(i)}
+                  onClick={() => a.run()}
+                >
+                  <span className="flex-1 truncate">{a.label}</span>
+                  {a.hint && (
+                    <span className="text-[10px] text-gray-600 truncate max-w-[42%]">{a.hint}</span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
         <div className="px-3 py-1.5 border-t border-border text-[10px] text-gray-600 flex gap-3">
           <span>↑↓ navigate</span>
@@ -173,3 +125,5 @@ export function CommandPalette({ open, onClose }: Props) {
     </div>
   );
 }
+
+export type { PaletteAction };

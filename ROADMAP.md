@@ -2,12 +2,17 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP15 | done | Shell → session highlight / profiles |
-| CP16 | done | Profile ↔ harness binding; Ctrl+K command palette |
-| CP17 | next | Palette plugins; project export of profile pair |
+| CP0–CP16 | done | Shell → profile/harness + Ctrl+K |
+| CP17 | done | Palette plugins; profile-pair export/import |
+| CP18 | next | Status-bar profile indicator; multi-window layout presets |
 
-## CP16
+## CP17
 
-- Each profile ships a matching **HarnessModel** (`applyProfile` updates graph + harness)
-- **Ctrl/⌘ K** command palette: windows, profiles, runtime demo/stop
-- Graph toolbar profiles use the same `applyProfile` path
+- `registerPalettePlugin` / `collectPluginActions` — third-party palette actions
+- Built-ins: Windows, Profiles, Runtime, Project (save/export/import)
+- **Profile pair** JSON (`kind: agent-os-profile`) = graph + harness portable bundle
+
+```bash
+git pull && npm run dev
+# Ctrl+K → "Export profile pair" / "Import profile pair"
+```
