@@ -32,12 +32,18 @@ export function RuntimePanel() {
 
   const startDemo = useSessionStore((s) => s.startDemo);
   const stopActive = useSessionStore((s) => s.stopActive);
+  const stopSession = useSessionStore((s) => s.stopSession);
+  const detachAll = useSessionStore((s) => s.detachAll);
   const attachTail = useSessionStore((s) => s.attachTail);
   const attachStdio = useSessionStore((s) => s.attachStdio);
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
+  const setActive = useSessionStore((s) => s.setActive);
   const autoMap = useSessionStore((s) => s.autoMap);
   const setAutoMap = useSessionStore((s) => s.setAutoMap);
+  const exclusive = useSessionStore((s) => s.exclusive);
+  const setExclusive = useSessionStore((s) => s.setExclusive);
+  const refresh = useSessionStore((s) => s.refresh);
 
   const stopRef = useRef<(() => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -46,12 +52,17 @@ export function RuntimePanel() {
   const [parseInfo, setParseInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [tailPath, setTailPath] = useState("sessions/demo.jsonl");
-  const [stdioCmd, setStdioCmd] = useState("echo {}");
+  const [stdioCmd, setStdioCmd] = useState(
+    'echo {"kind":"tool","label":"read_file","detail":"src/main.rs"}'
+  );
 
   useEffect(() => {
-    const id = setInterval(() => tick(), 200);
+    const id = setInterval(() => {
+      tick();
+      refresh();
+    }, 400);
     return () => clearInterval(id);
-  }, [tick]);
+  }, [tick, refresh]);
 
   const onStop = () => {
     stopRef.current?.();
@@ -61,8 +72,8 @@ export function RuntimePanel() {
   };
 
   const onRunDemo = () => {
-    if (running) return;
-    onStop();
+    if (exclusive && running) return;
+    if (exclusive) onStop();
     startDemo();
   };
 
@@ -127,7 +138,7 @@ export function RuntimePanel() {
           <button
             className="h-6 px-2.5 rounded text-[11px] bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-40"
             onClick={onRunDemo}
-            disabled={running}
+            disabled={exclusive && running}
           >
             Run demo
           </button>
@@ -143,7 +154,7 @@ export function RuntimePanel() {
           <button
             className="h-6 px-2 rounded text-[11px] text-gray-500 hover:bg-white/5"
             onClick={() => {
-              onStop();
+              detachAll();
               clear();
               setParseInfo(null);
             }}
@@ -153,17 +164,64 @@ export function RuntimePanel() {
         </div>
       </div>
 
+      {sessions.length > 0 && (
+        <div className="border-b border-border bg-[#0c0e14] px-2 py-1.5 flex flex-wrap gap-1.5 items-center">
+          <span className="text-[10px] text-gray-600 uppercase tracking-wide mr-1">Sessions</span>
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setActive(s.id)}
+              className={`group flex items-center gap-1.5 h-6 pl-2 pr-1 rounded text-[10px] border ${
+                s.id === activeId
+                  ? "border-accent/40 bg-accent/10 text-accent"
+                  : "border-border text-gray-400 hover:bg-white/5"
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  s.status === "running" || s.status === "starting"
+                    ? "bg-green-400 animate-pulse"
+                    : s.status === "error"
+                    ? "bg-red-400"
+                    : "bg-gray-600"
+                }`}
+              />
+              <span className="truncate max-w-[100px]">{s.label || s.transport}</span>
+              <span className="text-gray-600">{s.transport}</span>
+              <span
+                role="button"
+                className="opacity-60 hover:opacity-100 hover:text-red-400 px-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  stopSession(s.id);
+                }}
+              >
+                ×
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {pasteOpen && (
         <div className="border-b border-border bg-[#0f1115] p-2 space-y-2">
-          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+          <div className="flex flex-wrap items-center gap-3 text-[10px] text-gray-500">
             <span>Import / attach session</span>
-            <label className="ml-auto flex items-center gap-1 cursor-pointer">
+            <label className="flex items-center gap-1 cursor-pointer">
+              <input type="checkbox" checked={autoMap} onChange={(e) => setAutoMap(e.target.checked)} />
+              auto-map
+            </label>
+            <label
+              className="flex items-center gap-1 cursor-pointer"
+              title="Stop previous session when starting a new one"
+            >
               <input
                 type="checkbox"
-                checked={autoMap}
-                onChange={(e) => setAutoMap(e.target.checked)}
+                checked={exclusive}
+                onChange={(e) => setExclusive(e.target.checked)}
               />
-              auto-map graph
+              exclusive
             </label>
           </div>
           <div className="flex flex-wrap gap-1 items-center">
@@ -212,7 +270,7 @@ export function RuntimePanel() {
             />
             <button
               className="h-6 px-2 rounded text-[10px] bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40"
-              disabled={running}
+              disabled={exclusive && running}
               onClick={() => void attachTail(tailPath)}
             >
               Tail file
@@ -227,7 +285,7 @@ export function RuntimePanel() {
             />
             <button
               className="h-6 px-2 rounded text-[10px] bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 disabled:opacity-40"
-              disabled={running || !stdioCmd.trim()}
+              disabled={(exclusive && running) || !stdioCmd.trim()}
               onClick={() => void attachStdio(stdioCmd.trim())}
             >
               Stdio
