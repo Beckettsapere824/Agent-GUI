@@ -4,8 +4,10 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Serialize)]
@@ -58,8 +60,21 @@ struct StdioEndEvent {
     duration_ms: u128,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FsNativeEvent {
+    watch_id: String,
+    path: String,
+    kind: String,
+}
+
 fn child_map() -> &'static Mutex<HashMap<String, Child>> {
     static MAP: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
+    MAP.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn watcher_map() -> &'static Mutex<HashMap<String, RecommendedWatcher>> {
+    static MAP: OnceLock<Mutex<HashMap<String, RecommendedWatcher>>> = OnceLock::new();
     MAP.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -191,7 +206,6 @@ fn run_command(cmd: String, cwd: Option<String>) -> Result<RunCommandResult, Str
     })
 }
 
-/// Spawn shell command and emit line events. Supports kill via kill_stream_command.
 #[tauri::command]
 fn stream_command(
     app: AppHandle,
@@ -330,6 +344,79 @@ fn kill_stream_command(session_id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// OS-level path watch via `notify`. Emits `agent-os://fs-event`.
+#[tauri::command]
+fn watch_path_native(app: AppHandle, path: String, watch_id: String) -> Result<(), String> {
+    let path_buf = resolve_path(&path);
+    let wid = watch_id.clone();
+    let (tx, rx) = mpsc::channel();
+
+    let mut watcher = RecommendedWatcher::new(
+        move |res: Result<notify::Event, notify::Error>| {
+            let _ = tx.send(res);
+        },
+        notify::Config::default(),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mode = if path_buf.is_dir() {
+        RecursiveMode::Recursive
+    } else {
+        RecursiveMode::NonRecursive
+    };
+    watcher
+        .watch(&path_buf, mode)
+        .map_err(|e| format!("watch {}: {}", path_buf.display(), e))?;
+
+    {
+        let mut map = watcher_map().lock().map_err(|e| e.to_string())?;
+        map.insert(watch_id.clone(), watcher);
+    }
+
+    std::thread::spawn(move || {
+        while let Ok(res) = rx.recv() {
+            match res {
+                Ok(event) => {
+                    let kind = match event.kind {
+                        EventKind::Create(_) => "create",
+                        EventKind::Modify(_) => "modify",
+                        EventKind::Remove(_) => "remove",
+                        _ => "unknown",
+                    };
+                    for p in event.paths {
+                        let _ = app.emit(
+                            "agent-os://fs-event",
+                            FsNativeEvent {
+                                watch_id: wid.clone(),
+                                path: p.display().to_string(),
+                                kind: kind.into(),
+                            },
+                        );
+                    }
+                }
+                Err(e) => {
+                    let _ = app.emit(
+                        "agent-os://fs-event",
+                        FsNativeEvent {
+                            watch_id: wid.clone(),
+                            path: String::new(),
+                            kind: format!("error:{}", e),
+                        },
+                    );
+                }
+            }
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn unwatch_path_native(watch_id: String) -> Result<(), String> {
+    let mut map = watcher_map().lock().map_err(|e| e.to_string())?;
+    map.remove(&watch_id);
+    Ok(())
+}
+
 fn project_blob_path(key: &str) -> Result<PathBuf, String> {
     let base = dirs_next_data().ok_or_else(|| "no data dir".to_string())?;
     Ok(base.join("agent-os").join(format!("{}.json", key)))
@@ -375,6 +462,8 @@ pub fn run() {
             run_command,
             stream_command,
             kill_stream_command,
+            watch_path_native,
+            unwatch_path_native,
             save_project_blob,
             load_project_blob,
         ])
