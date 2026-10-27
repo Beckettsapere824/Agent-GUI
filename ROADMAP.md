@@ -2,17 +2,18 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP17 | done | Shell → palette plugins / profile pair |
-| CP18 | done | Status-bar profile; multi-window layout presets |
-| CP19 | next | Persist layout + profile with project snapshot |
+| CP0–CP18 | done | Shell → layouts / status profile |
+| CP19 | done | Persist layout + profile in project snapshot |
+| CP20 | next | Session attach presets; transcript → profile hints |
 
-## CP18
+## CP19
 
-- Status bar: `profile:…` / `layout:…`
-- Layouts via Ctrl+K: Focus Graph, Coding, Harness design, Debug
-- `applyLayout` opens/positions windows and minimizes the rest
+- `ProjectSnapshot` carries optional `profileId` / `profileName` / `layoutId`
+- Save / load / export / import restore workspace chrome
+- Loading a snapshot with `layoutId` re-runs `applyLayout`
+- Desktop mounts with `loadLocal()` so last session returns
 
 ```bash
 git pull && npm run dev
-# Ctrl+K → Layout: Coding
+# set Profile + Layout → Ctrl+S → reload page
 ```

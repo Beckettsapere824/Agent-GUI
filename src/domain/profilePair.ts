@@ -2,6 +2,7 @@ import type { DomainGraph, HarnessModel } from "./types";
 import { useGraphStore } from "../store/graphStore";
 import { useHarnessStore } from "../store/harnessStore";
 import { useProjectStore } from "../store/projectStore";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 /** Portable graph+harness bundle (profile pair). */
 export interface ProfilePairSnapshot {
@@ -13,10 +14,14 @@ export interface ProfilePairSnapshot {
   exportedAt: string;
   graph: DomainGraph;
   harness: HarnessModel;
+  profileId?: string | null;
+  profileName?: string | null;
+  layoutId?: string | null;
 }
 
 export function exportProfilePair(name?: string, description?: string): string {
   const proj = useProjectStore.getState();
+  const ws = useWorkspaceStore.getState();
   const snap: ProfilePairSnapshot = {
     version: 1,
     kind: "agent-os-profile",
@@ -26,6 +31,9 @@ export function exportProfilePair(name?: string, description?: string): string {
     exportedAt: new Date().toISOString(),
     graph: useGraphStore.getState().graph,
     harness: useHarnessStore.getState().model,
+    profileId: ws.activeProfileId,
+    profileName: ws.activeProfileName,
+    layoutId: ws.activeLayoutId,
   };
   return JSON.stringify(snap, null, 2);
 }
@@ -37,6 +45,15 @@ export function importProfilePair(raw: string): boolean {
     if (!snap.graph || !snap.harness) return false;
     useGraphStore.getState().replaceGraph(snap.graph);
     useHarnessStore.getState().replace(snap.harness);
+    useWorkspaceStore
+      .getState()
+      .setProfile(snap.profileId ?? null, snap.profileName ?? snap.name ?? null);
+    useWorkspaceStore.getState().setLayout(snap.layoutId ?? null);
+    if (snap.layoutId) {
+      void import("../desktop/layouts").then(({ applyLayout }) => {
+        applyLayout(snap.layoutId!);
+      });
+    }
     const proj = useProjectStore.getState();
     if (snap.name) proj.setName(snap.name);
     proj.saveLocal();

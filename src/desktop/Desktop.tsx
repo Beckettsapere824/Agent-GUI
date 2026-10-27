@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOSStore } from "../store/osStore";
+import { useProjectStore } from "../store/projectStore";
 import { Window } from "./Window";
 import { Taskbar } from "./Taskbar";
 import { StatusBar } from "./StatusBar";
@@ -22,6 +23,11 @@ export function Desktop() {
     paletteOpen,
     setPaletteOpen,
   });
+
+  // Restore last project (graph + harness + profile/layout) once on mount
+  useEffect(() => {
+    useProjectStore.getState().loadLocal();
+  }, []);
 
   return (
     <div className="relative w-full h-full bg-desktop overflow-hidden">

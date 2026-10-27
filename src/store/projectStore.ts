@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { useGraphStore } from "./graphStore";
 import { useHarnessStore } from "./harnessStore";
+import { useWorkspaceStore } from "./workspaceStore";
 import type { DomainGraph, HarnessModel } from "../domain/types";
 import { sampleDomainGraph } from "../domain/sampleGraph";
 import { sampleHarness } from "../domain/sampleHarness";
@@ -15,6 +16,10 @@ export interface ProjectSnapshot {
   updatedAt: string;
   graph: DomainGraph;
   harness: HarnessModel;
+  /** Optional workspace chrome (CP19). Older saves omit these. */
+  profileId?: string | null;
+  profileName?: string | null;
+  layoutId?: string | null;
 }
 
 export interface ProjectMeta {
@@ -43,6 +48,38 @@ function projectKey(id: string) {
 
 function newId() {
   return `proj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function buildSnapshot(id: string, name: string): ProjectSnapshot {
+  const ws = useWorkspaceStore.getState();
+  return {
+    version: 1,
+    id,
+    name,
+    updatedAt: new Date().toISOString(),
+    graph: useGraphStore.getState().graph,
+    harness: useHarnessStore.getState().model,
+    profileId: ws.activeProfileId,
+    profileName: ws.activeProfileName,
+    layoutId: ws.activeLayoutId,
+  };
+}
+
+function applyWorkspaceFromSnap(snap: ProjectSnapshot) {
+  useWorkspaceStore.getState().setProfile(snap.profileId ?? null, snap.profileName ?? null);
+  useWorkspaceStore.getState().setLayout(snap.layoutId ?? null);
+  if (snap.layoutId) {
+    // lazy to avoid circular import at module top
+    void import("../desktop/layouts").then(({ applyLayout }) => {
+      applyLayout(snap.layoutId!);
+    });
+  }
+}
+
+function applySnap(snap: ProjectSnapshot) {
+  useGraphStore.getState().replaceGraph(snap.graph);
+  useHarnessStore.getState().replace(snap.harness);
+  applyWorkspaceFromSnap(snap);
 }
 
 interface ProjectState {
@@ -74,14 +111,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   saveLocal: () => {
     try {
       const { id, name } = get();
-      const snap: ProjectSnapshot = {
-        version: 1,
-        id,
-        name,
-        updatedAt: new Date().toISOString(),
-        graph: useGraphStore.getState().graph,
-        harness: useHarnessStore.getState().model,
-      };
+      const snap = buildSnapshot(id, name);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
       localStorage.setItem(projectKey(id), JSON.stringify(snap));
       const reg = loadRegistry().filter((p) => p.id !== id);
@@ -99,9 +129,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       const snap = JSON.parse(raw) as ProjectSnapshot;
-      if (snap.version !== 1) return false;
-      useGraphStore.getState().replaceGraph(snap.graph);
-      useHarnessStore.getState().replace(snap.harness);
+      if (snap.version !== 1 || !snap.graph || !snap.harness) return false;
+      applySnap(snap);
       set({
         id: snap.id ?? "local-default",
         name: snap.name,
@@ -119,9 +148,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const raw = localStorage.getItem(projectKey(id));
       if (!raw) return false;
       const snap = JSON.parse(raw) as ProjectSnapshot;
-      if (snap.version !== 1) return false;
-      useGraphStore.getState().replaceGraph(snap.graph);
-      useHarnessStore.getState().replace(snap.harness);
+      if (snap.version !== 1 || !snap.graph || !snap.harness) return false;
+      applySnap(snap);
       localStorage.setItem(STORAGE_KEY, raw);
       set({
         id: snap.id,
@@ -139,6 +167,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const id = newId();
     useGraphStore.getState().replaceGraph(structuredClone(sampleDomainGraph));
     useHarnessStore.getState().replace(structuredClone(sampleHarness));
+    useWorkspaceStore.getState().setProfile(null, null);
+    useWorkspaceStore.getState().setLayout(null);
     set({ id, name, lastSavedAt: null });
     get().saveLocal();
   },
@@ -155,14 +185,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   exportJson: () => {
-    const snap: ProjectSnapshot = {
-      version: 1,
-      id: get().id,
-      name: get().name,
-      updatedAt: new Date().toISOString(),
-      graph: useGraphStore.getState().graph,
-      harness: useHarnessStore.getState().model,
-    };
+    const snap = buildSnapshot(get().id, get().name);
     return JSON.stringify(snap, null, 2);
   },
 
@@ -171,9 +194,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       const snap = JSON.parse(raw) as ProjectSnapshot;
       if (snap.version !== 1 || !snap.graph || !snap.harness) return false;
       const id = snap.id || newId();
-      useGraphStore.getState().replaceGraph(snap.graph);
-      useHarnessStore.getState().replace(snap.harness);
-      set({ id, name: snap.name ?? "imported", lastSavedAt: snap.updatedAt ?? null });
+      applySnap({ ...snap, id });
+      set({
+        id,
+        name: snap.name ?? "imported",
+        lastSavedAt: snap.updatedAt ?? null,
+      });
       get().saveLocal();
       return true;
     } catch {
