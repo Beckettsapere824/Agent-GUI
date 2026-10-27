@@ -1,8 +1,10 @@
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 
@@ -54,6 +56,11 @@ struct StdioEndEvent {
     session_id: String,
     code: i32,
     duration_ms: u128,
+}
+
+fn child_map() -> &'static Mutex<HashMap<String, Child>> {
+    static MAP: OnceLock<Mutex<HashMap<String, Child>>> = OnceLock::new();
+    MAP.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn resolve_path(path: &str) -> PathBuf {
@@ -184,8 +191,7 @@ fn run_command(cmd: String, cwd: Option<String>) -> Result<RunCommandResult, Str
     })
 }
 
-/// Spawn shell command and emit line events to the frontend.
-/// Events: `agent-os://stdio-line`, `agent-os://stdio-end`
+/// Spawn shell command and emit line events. Supports kill via kill_stream_command.
 #[tauri::command]
 fn stream_command(
     app: AppHandle,
@@ -196,112 +202,131 @@ fn stream_command(
     let session_id_thread = session_id.clone();
     std::thread::spawn(move || {
         let start = Instant::now();
-        #[cfg(target_os = "windows")]
-        let mut child = {
-            let mut c = Command::new("cmd");
-            c.args(["/C", &cmd])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            if let Some(dir) = &cwd {
-                c.current_dir(dir);
-            }
-            match c.spawn() {
-                Ok(ch) => ch,
-                Err(e) => {
-                    let _ = app.emit(
-                        "agent-os://stdio-line",
-                        StdioLineEvent {
-                            session_id: session_id_thread.clone(),
-                            stream: "stderr".into(),
-                            line: e.to_string(),
-                        },
-                    );
-                    let _ = app.emit(
-                        "agent-os://stdio-end",
-                        StdioEndEvent {
-                            session_id: session_id_thread,
-                            code: -1,
-                            duration_ms: start.elapsed().as_millis(),
-                        },
-                    );
-                    return;
+
+        let spawn_result = {
+            #[cfg(target_os = "windows")]
+            {
+                let mut c = Command::new("cmd");
+                c.args(["/C", &cmd])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                if let Some(dir) = &cwd {
+                    c.current_dir(dir);
                 }
+                c.spawn()
             }
-        };
-        #[cfg(not(target_os = "windows"))]
-        let mut child = {
-            let mut c = Command::new("sh");
-            c.args(["-c", &cmd])
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-            if let Some(dir) = &cwd {
-                c.current_dir(dir);
-            }
-            match c.spawn() {
-                Ok(ch) => ch,
-                Err(e) => {
-                    let _ = app.emit(
-                        "agent-os://stdio-line",
-                        StdioLineEvent {
-                            session_id: session_id_thread.clone(),
-                            stream: "stderr".into(),
-                            line: e.to_string(),
-                        },
-                    );
-                    let _ = app.emit(
-                        "agent-os://stdio-end",
-                        StdioEndEvent {
-                            session_id: session_id_thread,
-                            code: -1,
-                            duration_ms: start.elapsed().as_millis(),
-                        },
-                    );
-                    return;
+            #[cfg(not(target_os = "windows"))]
+            {
+                let mut c = Command::new("sh");
+                c.args(["-c", &cmd])
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+                if let Some(dir) = &cwd {
+                    c.current_dir(dir);
                 }
+                c.spawn()
             }
         };
 
-        if let Some(out) = child.stdout.take() {
-            let reader = BufReader::new(out);
-            for line in reader.lines().flatten() {
-                let _ = app.emit(
-                    "agent-os://stdio-line",
-                    StdioLineEvent {
-                        session_id: session_id_thread.clone(),
-                        stream: "stdout".into(),
-                        line,
-                    },
-                );
-            }
-        }
-        if let Some(err) = child.stderr.take() {
-            let reader = BufReader::new(err);
-            for line in reader.lines().flatten() {
+        let mut child = match spawn_result {
+            Ok(ch) => ch,
+            Err(e) => {
                 let _ = app.emit(
                     "agent-os://stdio-line",
                     StdioLineEvent {
                         session_id: session_id_thread.clone(),
                         stream: "stderr".into(),
-                        line,
+                        line: e.to_string(),
                     },
                 );
+                let _ = app.emit(
+                    "agent-os://stdio-end",
+                    StdioEndEvent {
+                        session_id: session_id_thread,
+                        code: -1,
+                        duration_ms: start.elapsed().as_millis(),
+                    },
+                );
+                return;
             }
+        };
+
+        if let Some(out) = child.stdout.take() {
+            let app2 = app.clone();
+            let sid = session_id_thread.clone();
+            std::thread::spawn(move || {
+                let reader = BufReader::new(out);
+                for line in reader.lines().flatten() {
+                    let _ = app2.emit(
+                        "agent-os://stdio-line",
+                        StdioLineEvent {
+                            session_id: sid.clone(),
+                            stream: "stdout".into(),
+                            line,
+                        },
+                    );
+                }
+            });
+        }
+        if let Some(err) = child.stderr.take() {
+            let app2 = app.clone();
+            let sid = session_id_thread.clone();
+            std::thread::spawn(move || {
+                let reader = BufReader::new(err);
+                for line in reader.lines().flatten() {
+                    let _ = app2.emit(
+                        "agent-os://stdio-line",
+                        StdioLineEvent {
+                            session_id: sid.clone(),
+                            stream: "stderr".into(),
+                            line,
+                        },
+                    );
+                }
+            });
         }
 
-        let code = child
-            .wait()
-            .ok()
-            .and_then(|s| s.code())
-            .unwrap_or(-1);
-        let _ = app.emit(
-            "agent-os://stdio-end",
-            StdioEndEvent {
-                session_id: session_id_thread,
-                code,
-                duration_ms: start.elapsed().as_millis(),
-            },
-        );
+        {
+            let mut map = child_map().lock().unwrap();
+            map.insert(session_id_thread.clone(), child);
+        }
+
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let mut map = child_map().lock().unwrap();
+            let done = match map.get_mut(&session_id_thread) {
+                Some(ch) => match ch.try_wait() {
+                    Ok(Some(status)) => Some(status.code().unwrap_or(-1)),
+                    Ok(None) => None,
+                    Err(_) => Some(-1),
+                },
+                None => Some(-1),
+            };
+            if let Some(code) = done {
+                map.remove(&session_id_thread);
+                drop(map);
+                let _ = app.emit(
+                    "agent-os://stdio-end",
+                    StdioEndEvent {
+                        session_id: session_id_thread,
+                        code,
+                        duration_ms: start.elapsed().as_millis(),
+                    },
+                );
+                break;
+            }
+        }
     });
+    Ok(())
+}
+
+#[tauri::command]
+fn kill_stream_command(session_id: String) -> Result<(), String> {
+    let mut map = child_map().lock().map_err(|e| e.to_string())?;
+    if let Some(mut child) = map.remove(&session_id) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
     Ok(())
 }
 
@@ -349,6 +374,7 @@ pub fn run() {
             write_text_file,
             run_command,
             stream_command,
+            kill_stream_command,
             save_project_blob,
             load_project_blob,
         ])
