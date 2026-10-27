@@ -11,6 +11,8 @@ export interface ActivityEvent {
   nodeId?: string;
   label: string;
   detail?: string;
+  /** Owning session when produced by AgentRuntime. */
+  sessionId?: string;
 }
 
 interface ActivityState {
@@ -19,15 +21,17 @@ interface ActivityState {
   running: boolean;
   mode: "live" | "replay" | "idle";
   replayIndex: number;
+  /** null = show all sessions */
+  filterSessionId: string | null;
+  setFilterSessionId: (id: string | null) => void;
   push: (e: Omit<ActivityEvent, "id" | "ts"> & { ts?: number }) => void;
   tick: () => void;
   clear: () => void;
   setRunning: (v: boolean) => void;
-  /** Ingest a batch (e.g. parsed transcript) without starting timers. */
-  loadEvents: (items: NormalizedEvent[]) => void;
-  /** Replay loaded or provided events with staggered timing. */
+  loadEvents: (items: NormalizedEvent[], sessionId?: string) => void;
   startReplay: (items?: NormalizedEvent[], stepMs?: number) => () => void;
   startDemoFromTranscript: () => () => void;
+  filteredEvents: () => ActivityEvent[];
 }
 
 let seq = 0;
@@ -45,13 +49,25 @@ export const useActivityStore = create<ActivityState>()(
     running: false,
     mode: "idle",
     replayIndex: 0,
+    filterSessionId: null,
+
+    setFilterSessionId: (id) =>
+      set((state) => {
+        state.filterSessionId = id;
+      }),
+
+    filteredEvents: () => {
+      const { events, filterSessionId } = get();
+      if (!filterSessionId) return events;
+      return events.filter((e) => !e.sessionId || e.sessionId === filterSessionId);
+    },
 
     push: (e) =>
       set((state) => {
         const id = `evt-${++seq}`;
         const ts = e.ts ?? Date.now();
         state.events.unshift({ ...e, id, ts });
-        if (state.events.length > 120) state.events.length = 120;
+        if (state.events.length > 200) state.events.length = 200;
         if (e.nodeId) {
           state.activeNodeIds[e.nodeId] = ts + 1800;
         }
@@ -81,7 +97,7 @@ export const useActivityStore = create<ActivityState>()(
         if (!v && state.mode !== "idle") state.mode = "idle";
       }),
 
-    loadEvents: (items) =>
+    loadEvents: (items, sessionId) =>
       set((state) => {
         clearReplayTimers();
         state.events = [];
@@ -99,6 +115,7 @@ export const useActivityStore = create<ActivityState>()(
             label: e.label,
             detail: e.detail,
             nodeId: e.nodeId,
+            sessionId,
           });
         });
         state.events.reverse();
@@ -116,6 +133,7 @@ export const useActivityStore = create<ActivityState>()(
             label: e.label,
             detail: e.detail,
             nodeId: e.nodeId,
+            sessionId: e.sessionId,
           }));
 
       set((state) => {
@@ -129,7 +147,7 @@ export const useActivityStore = create<ActivityState>()(
       const { push, setRunning } = get();
       list.forEach((e, i) => {
         const t = window.setTimeout(() => {
-          push(e);
+          push(e as Omit<ActivityEvent, "id" | "ts">);
           set((s) => {
             s.replayIndex = i + 1;
           });

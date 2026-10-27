@@ -2,15 +2,12 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP12 | done | Shell → stream_command |
-| CP13 | done | Multi-session UI, exclusive toggle, kill_stream_command |
-| CP14 | next | OS notify watcher, session event filters |
+| CP0–CP13 | done | Shell → multi-session / kill |
+| CP14 | done | Session event filters; Tauri notify watcher |
+| CP15 | next | Session-scoped graph highlight; agent profile presets |
 
-## CP13
+## CP14
 
-- Sessions chip bar: select + per-session stop
-- exclusive (default on): new session detaches previous
-- Tauri kill_stream_command + child registry
-- Clear detaches all sessions
-
-See CHECKLIST.md.
+- Activity events carry `sessionId`
+- Runtime: **all** filter + click session chip to filter stream
+- Tauri: `watch_path_native` / `unwatch_path_native` via `notify` crate; frontend falls back to meta-poll
