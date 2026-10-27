@@ -77,7 +77,12 @@ export const tauriPlatform: Platform = {
 
     return () => {
       for (const u of unsubs) void u();
+      void invoke("kill_stream_command", { sessionId }).catch(() => undefined);
     };
+  },
+
+  async killStream(sessionId: string): Promise<void> {
+    await invoke("kill_stream_command", { sessionId });
   },
 
   async saveProjectBlob(key: string, json: string): Promise<void> {

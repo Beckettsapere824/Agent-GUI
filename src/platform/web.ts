@@ -182,6 +182,10 @@ export const webPlatform: Platform = {
     };
   },
 
+  async killStream(_sessionId: string): Promise<void> {
+    /* web has no OS child */
+  },
+
   async saveProjectBlob(key: string, json: string): Promise<void> {
     localStorage.setItem(`agent-os:${key}`, json);
   },
