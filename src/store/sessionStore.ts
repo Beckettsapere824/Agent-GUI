@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { agentRuntime } from "../agent/runtime";
 import type { AgentSessionInfo } from "../agent/types";
 import { autoMapEvent } from "../graph/autoMap";
+import type { NormalizedEvent } from "../runtime/transcript";
 import { useActivityStore } from "./activityStore";
 
 interface SessionState {
@@ -12,20 +13,36 @@ interface SessionState {
   refresh: () => void;
   startDemo: () => void;
   attachTail: (path: string) => Promise<void>;
+  attachStdio: (command: string, cwd?: string) => Promise<void>;
   stopActive: () => void;
   detachAll: () => void;
 }
 
 let unsub: (() => void) | null = null;
 
-function ingest(batch: Parameters<typeof autoMapEvent>[0][], autoMap: boolean) {
+function ingest(batch: NormalizedEvent[], autoMap: boolean) {
   for (const e of batch) {
     let nodeId = e.nodeId;
-    if (autoMap) {
-      nodeId = autoMapEvent(e) ?? nodeId;
-    }
+    if (autoMap) nodeId = autoMapEvent(e) ?? nodeId;
     useActivityStore.getState().push({ ...e, nodeId });
   }
+}
+
+function bindHandle(h: { info: () => AgentSessionInfo; start: (cb: (b: NormalizedEvent[]) => void) => () => void }) {
+  useActivityStore.getState().clear();
+  useActivityStore.setState({ running: true, mode: "live" });
+  unsub = h.start((batch) => {
+    ingest(batch, useSessionStore.getState().autoMap);
+    const info = h.info();
+    if (info.status === "stopped" || info.status === "error") {
+      useActivityStore.setState({ running: false, mode: "idle" });
+    }
+    useSessionStore.getState().refresh();
+  });
+  useSessionStore.setState({
+    activeId: h.info().id,
+    sessions: agentRuntime.listSessions(),
+  });
 }
 
 export const useSessionStore = create<SessionState>((set, get) => ({
@@ -39,29 +56,19 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   startDemo: () => {
     get().stopActive();
-    const h = agentRuntime.attachDemo("demo");
-    useActivityStore.getState().clear();
-    useActivityStore.setState({ running: true, mode: "live" });
-    unsub = h.start((batch) => {
-      ingest(batch, get().autoMap);
-      if (h.info().status === "stopped") {
-        useActivityStore.setState({ running: false, mode: "idle" });
-      }
-      get().refresh();
-    });
-    set({ activeId: h.info().id, sessions: agentRuntime.listSessions() });
+    bindHandle(agentRuntime.attachDemo("demo"));
   },
 
   attachTail: async (path) => {
     get().stopActive();
     const h = await agentRuntime.attachFileTail(path);
-    useActivityStore.getState().clear();
-    useActivityStore.setState({ running: true, mode: "live" });
-    unsub = h.start((batch) => {
-      ingest(batch, get().autoMap);
-      get().refresh();
-    });
-    set({ activeId: h.info().id, sessions: agentRuntime.listSessions() });
+    bindHandle(h);
+  },
+
+  attachStdio: async (command, cwd) => {
+    get().stopActive();
+    const h = await agentRuntime.attachStdio({ command, cwd, label: command.slice(0, 32) });
+    bindHandle(h);
   },
 
   stopActive: () => {
@@ -76,9 +83,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   detachAll: () => {
     unsub?.();
     unsub = null;
-    for (const s of agentRuntime.listSessions()) {
-      agentRuntime.detach(s.id);
-    }
+    for (const s of agentRuntime.listSessions()) agentRuntime.detach(s.id);
     useActivityStore.setState({ running: false, mode: "idle" });
     set({ activeId: null, sessions: [] });
   },

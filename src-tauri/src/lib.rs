@@ -31,6 +31,14 @@ struct RunCommandResult {
     duration_ms: u128,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileMeta {
+    path: String,
+    len: u64,
+    modified_ms: Option<u64>,
+}
+
 fn resolve_path(path: &str) -> PathBuf {
     let p = Path::new(path);
     if p.is_absolute() {
@@ -72,15 +80,12 @@ fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
         } else {
             full.display().to_string()
         };
-        // Prefer relative-looking path as provided
         let display_path = if path.ends_with('/') || path == "." || path.is_empty() {
-            let base = if path.is_empty() || path == "." {
+            if path.is_empty() || path == "." {
                 name.clone() + if is_dir { "/" } else { "" }
             } else {
-                format!("{}{}{}", path.trim_end_matches('/'), "/", name)
-                    + if is_dir { "/" } else { "" }
-            };
-            base
+                format!("{}{}{}", path.trim_end_matches('/'), "/", name) + if is_dir { "/" } else { "" }
+            }
         } else {
             path_str
         };
@@ -90,12 +95,10 @@ fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
             kind: if is_dir { "dir".into() } else { "file".into() },
         });
     }
-    out.sort_by(|a, b| {
-        match (a.kind.as_str(), b.kind.as_str()) {
-            ("dir", "file") => std::cmp::Ordering::Less,
-            ("file", "dir") => std::cmp::Ordering::Greater,
-            _ => a.name.cmp(&b.name),
-        }
+    out.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
+        ("dir", "file") => std::cmp::Ordering::Less,
+        ("file", "dir") => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
     });
     Ok(out)
 }
@@ -104,6 +107,22 @@ fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
 fn read_text_file(path: String) -> Result<String, String> {
     let p = resolve_path(&path);
     fs::read_to_string(&p).map_err(|e| format!("read {}: {}", p.display(), e))
+}
+
+#[tauri::command]
+fn file_meta(path: String) -> Result<FileMeta, String> {
+    let p = resolve_path(&path);
+    let meta = fs::metadata(&p).map_err(|e| format!("meta {}: {}", p.display(), e))?;
+    let modified_ms = meta.modified().ok().and_then(|t| {
+        t.duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_millis() as u64)
+    });
+    Ok(FileMeta {
+        path: p.display().to_string(),
+        len: meta.len(),
+        modified_ms,
+    })
 }
 
 #[tauri::command]
@@ -120,8 +139,6 @@ fn write_text_file(path: String, content: String) -> Result<(), String> {
 #[tauri::command]
 fn run_command(cmd: String, cwd: Option<String>) -> Result<RunCommandResult, String> {
     let start = Instant::now();
-    // Intentionally conservative: single-string shell for agent tooling demos.
-    // Production should gate allowlists.
     #[cfg(target_os = "windows")]
     let output = {
         let mut c = Command::new("cmd");
@@ -155,7 +172,6 @@ fn project_blob_path(key: &str) -> Result<PathBuf, String> {
     Ok(base.join("agent-os").join(format!("{}.json", key)))
 }
 
-/// Minimal data dir without extra crate: use home/.agent-os
 fn dirs_next_data() -> Option<PathBuf> {
     std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
@@ -191,6 +207,7 @@ pub fn run() {
             host_info,
             list_dir,
             read_text_file,
+            file_meta,
             write_text_file,
             run_command,
             save_project_blob,

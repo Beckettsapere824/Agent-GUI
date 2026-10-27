@@ -14,12 +14,21 @@ interface GraphState {
   selectedEdgeId: string | null;
   setSelection: (nodeId: string | null, edgeId?: string | null) => void;
   addNode: (kind: NodeKind, x: number, y: number) => string;
+  /** Session-driven nodes: no undo history, no selection steal. */
+  ensureNode: (
+    kind: NodeKind,
+    data: Partial<GraphNodeData> & { label: string },
+    x: number,
+    y: number
+  ) => string;
   updateNodeData: (id: string, patch: Partial<GraphNodeData>) => void;
+  /** Patch without history (session metadata). */
+  patchNodeDataSilent: (id: string, patch: Partial<GraphNodeData>) => void;
   moveNode: (id: string, x: number, y: number) => void;
-  /** Commit positions after drag end into history once. */
   commitMove: () => void;
   removeNode: (id: string) => void;
   addEdge: (source: string, target: string) => void;
+  ensureEdge: (source: string, target: string, kind?: DomainEdge["kind"]) => void;
   removeEdge: (id: string) => void;
   replaceGraph: (g: DomainGraph) => void;
   clearSelection: () => void;
@@ -92,6 +101,28 @@ export const useGraphStore = create<GraphState>()(
       return id;
     },
 
+    ensureNode: (kind, data, x, y) => {
+      const existing = get().graph.nodes.find((n) => {
+        if (n.kind !== kind) return false;
+        if (data.path && (n.data.path === data.path || n.data.label === data.path)) return true;
+        if (data.label && n.data.label === data.label) return true;
+        return false;
+      });
+      if (existing) return existing.id;
+
+      const id = `${kind}-auto-${++seq}`;
+      set((s) => {
+        s.graph.nodes.push({
+          id,
+          kind,
+          x,
+          y,
+          data: { ...defaultsFor(kind), ...data },
+        });
+      });
+      return id;
+    },
+
     updateNodeData: (id, patch) =>
       set((s) => {
         pushHistory(s);
@@ -99,9 +130,14 @@ export const useGraphStore = create<GraphState>()(
         if (n) Object.assign(n.data, patch);
       }),
 
+    patchNodeDataSilent: (id, patch) =>
+      set((s) => {
+        const n = s.graph.nodes.find((x) => x.id === id);
+        if (n) Object.assign(n.data, patch);
+      }),
+
     moveNode: (id, x, y) =>
       set((s) => {
-        // live drag — no history spam
         const n = s.graph.nodes.find((x) => x.id === id);
         if (n) {
           n.x = x;
@@ -111,17 +147,11 @@ export const useGraphStore = create<GraphState>()(
 
     commitMove: () =>
       set((s) => {
-        // snapshot current as new baseline without duplicating if past already matches
         const top = s.past[s.past.length - 1];
         if (top && JSON.stringify(top) === JSON.stringify(s.graph)) return;
         s.past.push(structuredClone(s.graph));
         if (s.past.length > HISTORY_LIMIT) s.past.shift();
         s.future = [];
-        // remove the just-pushed current and keep previous as undo target:
-        // actually we want: past holds states BEFORE edits. On commit after drag,
-        // we should have pushed BEFORE the drag started. Simpler approach:
-        // keep as-is — undo goes to last committed snapshot including this one means
-        // one extra undo step. Prefer: only push if different from last past entry's positions.
       }),
 
     removeNode: (id) =>
@@ -143,6 +173,18 @@ export const useGraphStore = create<GraphState>()(
           source,
           target,
           kind: "uses",
+        });
+      }),
+
+    ensureEdge: (source, target, kind = "uses") =>
+      set((s) => {
+        if (source === target) return;
+        if (s.graph.edges.some((e) => e.source === source && e.target === target)) return;
+        s.graph.edges.push({
+          id: `e-auto-${++seq}`,
+          source,
+          target,
+          kind,
         });
       }),
 

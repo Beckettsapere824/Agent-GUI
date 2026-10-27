@@ -4,14 +4,20 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP7 | done | Shell → platform → undo → shortcuts/import |
-| CP8 | done | Multi-project, agent session API, file-tail, fs watch stubs |
-| CP9 | in progress | Live session mode, auto-map unknown tools/files onto graph |
-| CP10 | later | Native fs notify, stdio agent process |
+| CP0–CP8 | done | OS shell through multi-project + session API |
+| CP9 | done | Silent ensureNode/auto-map, live mode, Attach UI |
+| CP10 | partial | Stdio transport (one-shot via allowlist), `file_meta` on Tauri |
+| CP11 | next | Streaming spawn, native notify watcher |
 
-## Host verification (sandbox Vite)
+## CP9–10 notes
 
-- Graph boots; Run demo via session store streams events (`demo · running`)
-- Cascade window positions leave Graph visible under Runtime
-- Files → Projects: Save + registry list works
-- Virtual tree includes `sessions/`
+- `ensureNode` / `ensureEdge` — session graph mutations skip undo stack
+- Runtime **Attach**: Tail file, Stdio command, presets, auto-map toggle
+- `attachStdio` runs allowlisted command, parses stdout as JSONL, streams events
+- Tauri `file_meta` for efficient change detection (length/mtime)
+
+## Run
+
+```bash
+git pull && npm install --registry https://registry.npmjs.org && npm run dev
+```

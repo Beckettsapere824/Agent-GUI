@@ -2,54 +2,54 @@ import type { NormalizedEvent } from "../runtime/transcript";
 import { useGraphStore } from "../store/graphStore";
 
 /**
- * When a session event references a tool/file not on the graph,
- * create a lightweight node so lighting and inspection stay coherent.
+ * Map session events onto graph nodes. Creates tool/file nodes without
+ * touching undo history when missing.
  */
 export function autoMapEvent(e: NormalizedEvent): string | undefined {
+  const store = useGraphStore.getState();
+  const graph = store.graph;
+
   if (e.nodeId) {
-    const exists = useGraphStore.getState().graph.nodes.some((n) => n.id === e.nodeId);
+    const exists = graph.nodes.some((n) => n.id === e.nodeId);
     if (exists) return e.nodeId;
   }
 
-  const graph = useGraphStore.getState().graph;
   const label = e.label.trim();
   if (!label) return e.nodeId;
 
-  // Match by label
   const byLabel = graph.nodes.find(
-    (n) => n.data.label === label || n.data.path === label || n.data.path === e.detail
+    (n) =>
+      n.data.label === label ||
+      n.data.path === label ||
+      (e.detail != null && (n.data.path === e.detail || n.data.label === e.detail))
   );
   if (byLabel) return byLabel.id;
 
-  const kind =
-    e.kind === "read" || e.kind === "write" || (e.detail && /[./]/.test(e.detail))
-      ? e.kind === "tool"
-        ? "tool"
-        : "file"
-      : e.kind === "tool"
-      ? "tool"
-      : e.kind === "think"
-      ? null
-      : "tool";
-
-  if (!kind) return e.nodeId;
-
-  // Avoid flooding: only auto-add tools and files
-  if (kind === "tool") {
-    const id = useGraphStore.getState().addNode("tool", 380 + Math.random() * 40, 80 + graph.nodes.length * 12);
-    useGraphStore.getState().updateNodeData(id, {
-      label,
-      category: "session",
-    });
+  if (e.kind === "think") {
     const agent = graph.nodes.find((n) => n.kind === "agent");
-    if (agent) useGraphStore.getState().addEdge(agent.id, id);
+    return agent?.id ?? e.nodeId;
+  }
+
+  if (e.kind === "tool") {
+    const id = store.ensureNode(
+      "tool",
+      { label, category: "session" },
+      380 + (graph.nodes.length % 5) * 8,
+      60 + graph.nodes.filter((n) => n.kind === "tool").length * 72
+    );
+    const agent = graph.nodes.find((n) => n.kind === "agent");
+    if (agent) store.ensureEdge(agent.id, id, "uses");
     return id;
   }
 
-  if (kind === "file") {
+  if (e.kind === "read" || e.kind === "write") {
     const path = e.detail || label;
-    const id = useGraphStore.getState().addNode("file", 80 + Math.random() * 40, 360 + Math.random() * 40);
-    useGraphStore.getState().updateNodeData(id, { label: path, path });
+    const id = store.ensureNode(
+      "file",
+      { label: path, path },
+      80 + (graph.nodes.filter((n) => n.kind === "file").length % 3) * 180,
+      340 + Math.floor(graph.nodes.filter((n) => n.kind === "file").length / 3) * 70
+    );
     return id;
   }
 

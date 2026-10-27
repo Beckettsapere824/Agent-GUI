@@ -33,8 +33,11 @@ export function RuntimePanel() {
   const startDemo = useSessionStore((s) => s.startDemo);
   const stopActive = useSessionStore((s) => s.stopActive);
   const attachTail = useSessionStore((s) => s.attachTail);
+  const attachStdio = useSessionStore((s) => s.attachStdio);
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
+  const autoMap = useSessionStore((s) => s.autoMap);
+  const setAutoMap = useSessionStore((s) => s.setAutoMap);
 
   const stopRef = useRef<(() => void) | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -43,6 +46,7 @@ export function RuntimePanel() {
   const [parseInfo, setParseInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [tailPath, setTailPath] = useState("sessions/demo.jsonl");
+  const [stdioCmd, setStdioCmd] = useState("echo {}");
 
   useEffect(() => {
     const id = setInterval(() => tick(), 200);
@@ -106,7 +110,7 @@ export function RuntimePanel() {
       <div className="h-9 shrink-0 flex items-center gap-2 px-3 border-b border-border bg-[#12151c]">
         <span className="text-[11px] text-blue-400 font-medium">Agent Runtime</span>
         <span className="text-gray-600 text-[11px]">|</span>
-        <span className="text-[11px] text-gray-500">
+        <span className="text-[11px] text-gray-500 truncate max-w-[180px]">
           {active
             ? `${active.transport} · ${active.status}`
             : mode === "replay"
@@ -131,7 +135,7 @@ export function RuntimePanel() {
             className="h-6 px-2 rounded text-[11px] text-gray-400 hover:bg-white/5"
             onClick={() => setPasteOpen((v) => !v)}
           >
-            Import
+            Attach
           </button>
           <button className="h-6 px-2 rounded text-[11px] text-gray-400 hover:bg-white/5" onClick={onStop}>
             Stop
@@ -151,8 +155,16 @@ export function RuntimePanel() {
 
       {pasteOpen && (
         <div className="border-b border-border bg-[#0f1115] p-2 space-y-2">
-          <div className="text-[10px] text-gray-500">
-            Paste JSONL, drop a file, attach file-tail, or load a preset.
+          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+            <span>Import / attach session</span>
+            <label className="ml-auto flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoMap}
+                onChange={(e) => setAutoMap(e.target.checked)}
+              />
+              auto-map graph
+            </label>
           </div>
           <div className="flex flex-wrap gap-1 items-center">
             <button
@@ -190,23 +202,39 @@ export function RuntimePanel() {
                 e.target.value = "";
               }}
             />
-            <span className="text-gray-700 mx-1">|</span>
+          </div>
+          <div className="flex flex-wrap gap-1 items-center">
             <input
-              className="h-6 w-40 bg-[#0c0e14] border border-border rounded px-1.5 font-mono text-[10px] text-gray-300 outline-none focus:border-accent"
+              className="h-6 flex-1 min-w-[120px] bg-[#0c0e14] border border-border rounded px-1.5 font-mono text-[10px] text-gray-300 outline-none focus:border-accent"
               value={tailPath}
               onChange={(e) => setTailPath(e.target.value)}
-              placeholder="path to jsonl"
+              placeholder="jsonl path"
             />
             <button
               className="h-6 px-2 rounded text-[10px] bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40"
               disabled={running}
               onClick={() => void attachTail(tailPath)}
             >
-              Attach tail
+              Tail file
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1 items-center">
+            <input
+              className="h-6 flex-1 min-w-[120px] bg-[#0c0e14] border border-border rounded px-1.5 font-mono text-[10px] text-gray-300 outline-none focus:border-accent"
+              value={stdioCmd}
+              onChange={(e) => setStdioCmd(e.target.value)}
+              placeholder="allowlisted command (stdout JSONL)"
+            />
+            <button
+              className="h-6 px-2 rounded text-[10px] bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 disabled:opacity-40"
+              disabled={running || !stdioCmd.trim()}
+              onClick={() => void attachStdio(stdioCmd.trim())}
+            >
+              Stdio
             </button>
           </div>
           <textarea
-            className="w-full h-24 bg-[#0c0e14] border border-border rounded p-2 font-mono text-[11px] text-gray-200 outline-none focus:border-accent resize-y"
+            className="w-full h-20 bg-[#0c0e14] border border-border rounded p-2 font-mono text-[11px] text-gray-200 outline-none focus:border-accent resize-y"
             placeholder='{"kind":"tool","label":"read_file","detail":"src/main.rs"}'
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
@@ -226,6 +254,9 @@ export function RuntimePanel() {
               Replay
             </button>
             {parseInfo && <span className="text-[10px] text-gray-500 ml-1">{parseInfo}</span>}
+            {active?.error && (
+              <span className="text-[10px] text-red-400 ml-1 truncate max-w-[40%]">{active.error}</span>
+            )}
           </div>
         </div>
       )}
@@ -233,7 +264,7 @@ export function RuntimePanel() {
       <div className="flex-1 min-h-0 overflow-y-auto font-mono text-[12px]">
         {events.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-600 text-sm px-6 text-center gap-2">
-            <div>No events — Run demo, Import, Attach tail, or drop .jsonl</div>
+            <div>No events — Run demo, Attach, Tail, Stdio, or drop .jsonl</div>
             <div className="text-[11px] text-gray-700">Sessions light matching graph nodes</div>
           </div>
         )}
