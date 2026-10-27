@@ -4,6 +4,7 @@ import { sampleHarness } from "./sampleHarness";
 import { useGraphStore } from "../store/graphStore";
 import { useHarnessStore } from "../store/harnessStore";
 import { useProjectStore } from "../store/projectStore";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 export interface AgentProfile {
   id: string;
@@ -328,6 +329,7 @@ export function applyProfile(id: string): boolean {
   if (!p) return false;
   useGraphStore.getState().replaceGraph(cloneGraph(p.graph));
   useHarnessStore.getState().replace(cloneHarness(p.harness));
+  useWorkspaceStore.getState().setProfile(p.id, p.name);
   const proj = useProjectStore.getState();
   if (!proj.name || proj.name === "untitled-project" || proj.name.endsWith("-project")) {
     proj.setName(`${p.id}-project`);

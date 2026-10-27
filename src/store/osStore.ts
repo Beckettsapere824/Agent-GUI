@@ -25,6 +25,10 @@ interface OSState {
   focusWindow: (id: WindowId) => void;
   moveWindow: (id: WindowId, x: number, y: number) => void;
   resizeWindow: (id: WindowId, width: number, height: number) => void;
+  placeWindow: (
+    id: WindowId,
+    bounds: Partial<Pick<WindowState, "x" | "y" | "width" | "height" | "minimized" | "maximized">>
+  ) => void;
   toggleMinimize: (id: WindowId) => void;
   toggleMaximize: (id: WindowId) => void;
 }
@@ -103,6 +107,20 @@ export const useOSStore = create<OSState>()(
           win.width = Math.max(360, width);
           win.height = Math.max(240, height);
         }
+      }),
+
+    placeWindow: (id, bounds) =>
+      set((state) => {
+        const win = state.windows.find((w) => w.id === id);
+        if (!win) return;
+        if (bounds.x != null) win.x = bounds.x;
+        if (bounds.y != null) win.y = bounds.y;
+        if (bounds.width != null) win.width = Math.max(360, bounds.width);
+        if (bounds.height != null) win.height = Math.max(240, bounds.height);
+        if (bounds.minimized != null) win.minimized = bounds.minimized;
+        if (bounds.maximized != null) win.maximized = bounds.maximized;
+        win.zIndex = state.nextZIndex++;
+        if (!win.minimized) state.activeWindowId = id;
       }),
 
     toggleMinimize: (id) =>

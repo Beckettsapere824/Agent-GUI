@@ -7,6 +7,7 @@ import {
 } from "../domain/profilePair";
 import { useProjectStore } from "../store/projectStore";
 import { useSessionStore } from "../store/sessionStore";
+import { LAYOUT_PRESETS, applyLayout } from "./layouts";
 import { registerPalettePlugin } from "./palettePlugins";
 import { APP_DEFS, openAppById } from "./shortcuts";
 
@@ -28,6 +29,22 @@ export function ensureBuiltinPalettePlugins() {
         keywords: [a.title, a.type, a.id],
         run: () => {
           openAppById(a.id);
+          close();
+        },
+      })),
+  });
+
+  registerPalettePlugin({
+    id: "layouts",
+    contribute: ({ close }) =>
+      LAYOUT_PRESETS.map((l) => ({
+        id: `layout-${l.id}`,
+        group: "Layouts",
+        label: `Layout: ${l.name}`,
+        hint: l.description,
+        keywords: ["layout", "workspace", l.id, l.name],
+        run: () => {
+          applyLayout(l.id);
           close();
         },
       })),

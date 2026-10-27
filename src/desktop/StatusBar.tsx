@@ -4,6 +4,7 @@ import { useActivityStore } from "../store/activityStore";
 import { useProjectStore } from "../store/projectStore";
 import { useGraphStore } from "../store/graphStore";
 import { useSessionStore } from "../store/sessionStore";
+import { useWorkspaceStore } from "../store/workspaceStore";
 
 export function StatusBar() {
   const [host, setHost] = useState(isTauriRuntime() ? "tauri" : "web");
@@ -15,6 +16,8 @@ export function StatusBar() {
   const sessions = useSessionStore((s) => s.sessions);
   const activeId = useSessionStore((s) => s.activeId);
   const active = sessions.find((s) => s.id === activeId);
+  const profileName = useWorkspaceStore((s) => s.activeProfileName);
+  const layoutId = useWorkspaceStore((s) => s.activeLayoutId);
 
   useEffect(() => {
     void getPlatform().then((p) => setHost(p.kind));
@@ -29,6 +32,22 @@ export function StatusBar() {
       </span>
       <span className="mx-2 text-gray-700">·</span>
       <span className="uppercase tracking-wide">{host}</span>
+      {profileName && (
+        <>
+          <span className="mx-2 text-gray-700">·</span>
+          <span className="text-violet-400/90" title="Active agent profile">
+            profile:{profileName}
+          </span>
+        </>
+      )}
+      {layoutId && (
+        <>
+          <span className="mx-2 text-gray-700">·</span>
+          <span className="text-gray-400" title="Window layout">
+            layout:{layoutId}
+          </span>
+        </>
+      )}
       {active && (
         <>
           <span className="mx-2 text-gray-700">·</span>
@@ -46,7 +65,7 @@ export function StatusBar() {
           </span>
         </>
       )}
-      <span className="ml-auto text-gray-600">? help</span>
+      <span className="ml-auto text-gray-600">⌘K · ? help</span>
     </div>
   );
 }

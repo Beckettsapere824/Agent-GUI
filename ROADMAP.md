@@ -2,17 +2,17 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP16 | done | Shell → profile/harness + Ctrl+K |
-| CP17 | done | Palette plugins; profile-pair export/import |
-| CP18 | next | Status-bar profile indicator; multi-window layout presets |
+| CP0–CP17 | done | Shell → palette plugins / profile pair |
+| CP18 | done | Status-bar profile; multi-window layout presets |
+| CP19 | next | Persist layout + profile with project snapshot |
 
-## CP17
+## CP18
 
-- `registerPalettePlugin` / `collectPluginActions` — third-party palette actions
-- Built-ins: Windows, Profiles, Runtime, Project (save/export/import)
-- **Profile pair** JSON (`kind: agent-os-profile`) = graph + harness portable bundle
+- Status bar: `profile:…` / `layout:…`
+- Layouts via Ctrl+K: Focus Graph, Coding, Harness design, Debug
+- `applyLayout` opens/positions windows and minimizes the rest
 
 ```bash
 git pull && npm run dev
-# Ctrl+K → "Export profile pair" / "Import profile pair"
+# Ctrl+K → Layout: Coding
 ```
