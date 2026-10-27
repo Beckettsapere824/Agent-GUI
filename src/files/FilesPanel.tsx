@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useGraphStore } from "../store/graphStore";
 import { useProjectStore } from "../store/projectStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import { getPlatform, isTauriRuntime } from "../platform";
 
 export function FilesPanel() {
   const [filter, setFilter] = useState("");
@@ -29,8 +28,15 @@ export function FilesPanel() {
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const currentId = useProjectStore((s) => s.id);
 
-  const { root, host, entries, loading, error, init, setRoot, refresh, readFile } =
-    useWorkspaceStore();
+  const root = useWorkspaceStore((s) => s.root);
+  const host = useWorkspaceStore((s) => s.host);
+  const entries = useWorkspaceStore((s) => s.entries) ?? [];
+  const loading = useWorkspaceStore((s) => s.loading);
+  const error = useWorkspaceStore((s) => s.error);
+  const init = useWorkspaceStore((s) => s.init);
+  const setRoot = useWorkspaceStore((s) => s.setRoot);
+  const refresh = useWorkspaceStore((s) => s.refresh);
+  const readFile = useWorkspaceStore((s) => s.readFile);
 
   useEffect(() => {
     void init();
@@ -39,7 +45,8 @@ export function FilesPanel() {
 
   const items = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return entries.filter(
+    const list = entries ?? [];
+    return list.filter(
       (t) => !q || t.path.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
     );
   }, [entries, filter]);
@@ -78,200 +85,154 @@ export function FilesPanel() {
     if (!root || root === "." || root === "/") return;
     const cleaned = root.replace(/\/+$/, "");
     const i = cleaned.lastIndexOf("/");
-    const parent = i <= 0 ? (host?.kind === "web" ? "" : ".") : cleaned.slice(0, i);
+    const parent = i <= 0 ? "." : cleaned.slice(0, i);
     await setRoot(parent || ".");
-  };
-
-  const onSaveProject = async () => {
-    saveLocal();
-    try {
-      const p = await getPlatform();
-      await p.saveProjectBlob("project-v1", exportJson());
-    } catch {
-      /* localStorage path still used */
-    }
   };
 
   return (
     <div className="w-full h-full flex flex-col text-xs">
-      <div className="h-8 shrink-0 flex items-center gap-2 px-3 border-b border-border bg-[#12151c]">
-        <span className="text-amber-400/90 font-medium text-[11px]">Files</span>
+      <div className="h-9 shrink-0 flex items-center gap-2 px-3 border-b border-border bg-[#12151c]">
+        <span className="text-[11px] text-amber-400 font-medium">Files</span>
         <span className="text-gray-600">|</span>
+        <span className="text-gray-500 truncate max-w-[160px]" title={root}>
+          {root}
+        </span>
+        <span className="text-gray-600 uppercase">{host}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
+            onClick={() => void onUp()}
+          >
+            Up
+          </button>
+          <button
+            className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
+            onClick={() => void refresh()}
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="px-3 py-2 border-b border-border flex flex-wrap gap-2 items-center bg-[#0f1115]">
         <input
-          className="bg-transparent border-none outline-none text-gray-300 text-[11px] flex-1 min-w-0"
+          className="h-6 flex-1 min-w-[100px] bg-[#0c0e14] border border-border rounded px-2 text-[11px] text-gray-300 outline-none focus:border-accent"
+          placeholder="Filter…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        <input
+          className="h-6 w-28 bg-[#0c0e14] border border-border rounded px-2 text-[11px] text-gray-300 outline-none"
           value={name}
           onChange={(e) => setName(e.target.value)}
           title="Project name"
         />
-        <span className="text-[10px] text-gray-600 shrink-0">
-          {isTauriRuntime() ? "tauri" : "web"}
-        </span>
-      </div>
-
-      <div className="px-2 py-1.5 border-b border-border flex flex-wrap gap-1 items-center">
         <button
-          className="h-6 px-2 rounded bg-white/5 text-gray-300 hover:bg-white/10"
-          onClick={() => void onSaveProject()}
+          className="h-6 px-2 rounded text-[10px] bg-accent/20 text-accent hover:bg-accent/30"
+          onClick={() => saveLocal()}
         >
           Save
         </button>
         <button
-          className="h-6 px-2 rounded bg-white/5 text-gray-300 hover:bg-white/10"
+          className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
           onClick={() => loadLocal()}
         >
           Load
         </button>
         <button
-          className="h-6 px-2 rounded bg-white/5 text-gray-300 hover:bg-white/10"
+          className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
           onClick={onExport}
         >
           Export
         </button>
         <button
-          className="h-6 px-2 rounded bg-white/5 text-gray-300 hover:bg-white/10"
-          onClick={() => void refresh()}
-        >
-          Refresh
-        </button>
-        <button
-          className={`h-6 px-2 rounded ${
-            showProjects ? "bg-accent/20 text-accent" : "bg-white/5 text-gray-300 hover:bg-white/10"
-          }`}
-          onClick={() => {
-            refreshRegistry();
-            setShowProjects((v) => !v);
-          }}
+          className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
+          onClick={() => setShowProjects((v) => !v)}
         >
           Projects
         </button>
         {lastSavedAt && (
-          <span className="text-[10px] text-gray-600 ml-auto">
-            saved {new Date(lastSavedAt).toLocaleTimeString()}
-          </span>
+          <span className="text-[10px] text-gray-600">saved {new Date(lastSavedAt).toLocaleTimeString()}</span>
         )}
       </div>
 
       {showProjects && (
-        <div className="border-b border-border bg-[#0f1115] p-2 space-y-1 max-h-36 overflow-y-auto">
-          <div className="flex gap-1 mb-1">
+        <div className="border-b border-border px-3 py-2 space-y-1 bg-[#0c0e14]">
+          <div className="flex gap-1">
             <button
-              className="h-6 px-2 rounded text-[10px] bg-accent/20 text-accent hover:bg-accent/30"
-              onClick={() => newProject(`project-${registry.length + 1}`)}
+              className="h-6 px-2 rounded text-[10px] bg-white/5 text-gray-300"
+              onClick={() => newProject()}
             >
-              + New project
+              New project
             </button>
           </div>
-          {registry.length === 0 && (
-            <div className="text-[10px] text-gray-600 px-1">No saved projects yet — Save first</div>
-          )}
-          {registry.map((p) => (
-            <div
-              key={p.id}
-              className={`flex items-center gap-2 px-2 py-1 rounded ${
-                p.id === currentId ? "bg-accent/10 border border-accent/30" : "hover:bg-white/5"
-              }`}
-            >
-              <button
-                className="flex-1 text-left min-w-0"
-                onClick={() => loadProject(p.id)}
-              >
-                <div className="text-gray-200 truncate">{p.name}</div>
-                <div className="text-[10px] text-gray-600">
-                  {new Date(p.updatedAt).toLocaleString()}
-                </div>
-              </button>
-              <button
-                className="text-[10px] text-red-400/80 hover:text-red-400 px-1"
-                onClick={() => deleteProject(p.id)}
-              >
-                del
-              </button>
-            </div>
-          ))}
+          <ul className="max-h-28 overflow-y-auto">
+            {(registry ?? []).map((p) => (
+              <li key={p.id} className="flex items-center gap-2 py-0.5">
+                <button
+                  className={`text-[11px] truncate flex-1 text-left ${
+                    p.id === currentId ? "text-accent" : "text-gray-400 hover:text-gray-200"
+                  }`}
+                  onClick={() => loadProject(p.id)}
+                >
+                  {p.name}
+                </button>
+                <button
+                  className="text-[10px] text-gray-600 hover:text-red-400"
+                  onClick={() => deleteProject(p.id)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
-      <div className="px-2 py-1 border-b border-border flex items-center gap-2 text-[11px]">
-        <button className="text-gray-500 hover:text-gray-300" onClick={() => void onUp()} title="Up">
-          ↑
-        </button>
-        <span className="font-mono text-gray-500 truncate" title={root}>
-          {root || "/"}
-        </span>
-        {loading && <span className="text-gray-600 ml-auto">loading…</span>}
-        {error && <span className="text-red-400 ml-auto truncate max-w-[40%]">{error}</span>}
-      </div>
-
-      <div className="px-2 py-1.5 border-b border-border">
-        <input
-          className="w-full bg-[#0f1115] border border-border rounded px-2 py-1 text-gray-200 outline-none focus:border-accent"
-          placeholder="Filter…"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-      </div>
-
       <div className="flex-1 min-h-0 flex">
-        <ul className="flex-1 overflow-y-auto font-mono border-r border-border">
-          {items.map((item) => {
-            const onGraph = item.kind === "file" && graphFiles.includes(item.path);
-            return (
-              <li
-                key={item.path}
-                className="px-3 py-1 flex items-center gap-2 hover:bg-white/[0.03] border-b border-border/40"
-              >
-                <button
-                  className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                  onClick={() => void onOpen(item.path, item.kind)}
-                >
-                  <span className={item.kind === "dir" ? "text-sky-500" : "text-gray-500"}>
-                    {item.kind === "dir" ? "DIR" : "FILE"}
-                  </span>
-                  <span className="text-gray-300 truncate">{item.name}</span>
-                </button>
-                {item.kind === "file" && (
-                  <button
-                    className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${
-                      onGraph
-                        ? "text-amber-400/80 bg-amber-500/10"
-                        : "text-gray-500 hover:text-gray-300 hover:bg-white/5"
-                    }`}
-                    disabled={onGraph}
-                    onClick={() => addFileToGraph(item.path)}
-                  >
-                    {onGraph ? "on graph" : "+ graph"}
-                  </button>
-                )}
-              </li>
-            );
-          })}
-          {items.length === 0 && !loading && (
-            <li className="px-3 py-4 text-gray-600 text-center">Empty</li>
+        <div className="w-1/2 border-r border-border overflow-y-auto">
+          {loading && <div className="p-3 text-gray-600">Loading…</div>}
+          {error && <div className="p-3 text-red-400">{error}</div>}
+          {!loading && items.length === 0 && (
+            <div className="p-3 text-gray-600">Empty directory</div>
           )}
-        </ul>
-
-        {preview && (
-          <div className="w-1/2 flex flex-col min-w-0">
-            <div className="h-7 px-2 flex items-center border-b border-border text-[10px] text-gray-500 font-mono truncate">
-              {preview.path}
-              <button
-                className="ml-auto text-gray-500 hover:text-gray-300"
-                onClick={() => setPreview(null)}
-              >
-                ✕
-              </button>
-            </div>
-            <pre className="flex-1 overflow-auto p-2 text-[11px] text-gray-300 whitespace-pre-wrap">
-              {preview.text}
-            </pre>
-          </div>
-        )}
-      </div>
-
-      <div className="px-3 py-2 border-t border-border text-[10px] text-gray-600">
-        {host?.kind === "tauri"
-          ? "Host FS via Tauri commands"
-          : "Virtual workspace (web). Tauri unlocks real FS."}
+          <ul className="divide-y divide-border/50">
+            {items.map((e) => (
+              <li key={e.path}>
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-white/[0.03]"
+                  onClick={() => void onOpen(e.path, e.kind)}
+                  onDoubleClick={() => e.kind === "file" && addFileToGraph(e.path)}
+                >
+                  <span className="text-[10px] text-gray-600 w-8">{e.kind === "dir" ? "DIR" : "FILE"}</span>
+                  <span className="text-gray-300 truncate font-mono text-[11px]">{e.name}</span>
+                  {e.kind === "file" && graphFiles.includes(e.path) && (
+                    <span className="ml-auto text-[9px] text-accent">on graph</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="w-1/2 overflow-auto p-2 font-mono text-[11px] text-gray-400">
+          {preview ? (
+            <>
+              <div className="text-gray-500 mb-2 flex justify-between gap-2">
+                <span className="truncate">{preview.path}</span>
+                <button
+                  className="text-accent shrink-0"
+                  onClick={() => addFileToGraph(preview.path)}
+                >
+                  + graph
+                </button>
+              </div>
+              <pre className="whitespace-pre-wrap text-gray-300">{preview.text}</pre>
+            </>
+          ) : (
+            <div className="text-gray-600">Select a file to preview</div>
+          )}
+        </div>
       </div>
     </div>
   );
