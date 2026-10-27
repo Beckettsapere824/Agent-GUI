@@ -2,8 +2,15 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP11 | done | Shell → meta-watch → session UI |
-| CP12 | done | Tauri `stream_command` + platform.streamCommand; stdio line events |
-| CP13 | next | OS notify watcher, process kill handle, multi-session UI |
+| CP0–CP12 | done | Shell → stream_command |
+| CP13 | done | Multi-session UI, exclusive toggle, kill_stream_command |
+| CP14 | next | OS notify watcher, session event filters |
 
-See **CHECKLIST.md** for local QA.
+## CP13
+
+- Sessions chip bar: select + per-session stop
+- exclusive (default on): new session detaches previous
+- Tauri kill_stream_command + child registry
+- Clear detaches all sessions
+
+See CHECKLIST.md.
