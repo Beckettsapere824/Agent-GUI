@@ -54,6 +54,18 @@ export function GraphWorkspace() {
 
   const activeNodeIds = useActivityStore((s) => s.activeNodeIds);
   const running = useActivityStore((s) => s.running);
+  const filterSessionId = useActivityStore((s) => s.filterSessionId);
+  const activityEvents = useActivityStore((s) => s.events);
+
+  /** Nodes touched by the filtered session (or all when filter is null). */
+  const sessionNodeIds = useMemo(() => {
+    if (!filterSessionId) return null as Set<string> | null;
+    const set = new Set<string>();
+    for (const e of activityEvents) {
+      if (e.sessionId === filterSessionId && e.nodeId) set.add(e.nodeId);
+    }
+    return set;
+  }, [filterSessionId, activityEvents]);
 
   const draggingRef = useRef(false);
   const snapshotBeforeDrag = useRef<string | null>(null);
@@ -66,36 +78,51 @@ export function GraphWorkspace() {
   useEffect(() => {
     const { flowNodes, flowEdges } = domainToFlow(graph.nodes, graph.edges);
     setNodes(
-      flowNodes.map((n) => ({
-        ...n,
-        selected: n.id === selectedNodeId,
-        data: {
-          ...n.data,
-          active: !!activeNodeIds[n.id],
-          status:
-            n.type === "agent"
-              ? running
-                ? activeNodeIds[n.id]
-                  ? "running"
-                  : "busy"
-                : (n.data as { status?: string }).status ?? "idle"
-              : (n.data as { status?: string }).status,
-        },
-      }))
+      flowNodes.map((n) => {
+        const inSession = !sessionNodeIds || sessionNodeIds.has(n.id);
+        const live = !!activeNodeIds[n.id];
+        const active = inSession && live;
+        return {
+          ...n,
+          selected: n.id === selectedNodeId,
+          data: {
+            ...n.data,
+            active,
+            dimmed: !!sessionNodeIds && !inSession,
+            status:
+              n.type === "agent"
+                ? running
+                  ? active
+                    ? "running"
+                    : inSession
+                    ? "busy"
+                    : "idle"
+                  : (n.data as { status?: string }).status ?? "idle"
+                : (n.data as { status?: string }).status,
+          },
+        };
+      })
     );
     setEdges(
       flowEdges.map((e) => {
         const kind = (e.data as { kind?: string } | undefined)?.kind ?? "uses";
         const color = edgeStroke[kind] ?? "#3b82f6";
+        const related =
+          !sessionNodeIds ||
+          sessionNodeIds.has(e.source) ||
+          sessionNodeIds.has(e.target);
         return {
           ...e,
-          style: { stroke: color },
+          style: {
+            stroke: color,
+            opacity: related ? 1 : 0.25,
+          },
           markerEnd: { type: MarkerType.ArrowClosed, color },
           type: "smoothstep",
         };
       })
     );
-  }, [graph, selectedNodeId, activeNodeIds, running]);
+  }, [graph, selectedNodeId, activeNodeIds, running, sessionNodeIds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -130,20 +157,6 @@ export function GraphWorkspace() {
           moveNode(c.id, c.position.x, c.position.y);
           if (c.dragging === false && draggingRef.current) {
             draggingRef.current = false;
-            // push pre-drag state into history
-            const before = snapshotBeforeDrag.current;
-            snapshotBeforeDrag.current = null;
-            if (before) {
-              const pastGraph = JSON.parse(before);
-              useGraphStore.setState((s) => {
-                const top = s.past[s.past.length - 1];
-                if (!top || JSON.stringify(top) !== before) {
-                  s.past.push(pastGraph);
-                  if (s.past.length > 40) s.past.shift();
-                  s.future = [];
-                }
-              });
-            }
             commitMove();
           }
         }
@@ -155,7 +168,7 @@ export function GraphWorkspace() {
         }
       }
     },
-    [moveNode, setSelection, removeNode, commitMove]
+    [moveNode, commitMove, setSelection, removeNode]
   );
 
   const onEdgesChange = useCallback(
@@ -163,19 +176,23 @@ export function GraphWorkspace() {
       setEdges((eds) => applyEdgeChanges(changes, eds));
       for (const c of changes) {
         if (c.type === "remove") removeEdge(c.id);
-        if (c.type === "select" && c.selected) setSelection(null, c.id);
       }
     },
-    [removeEdge, setSelection]
+    [removeEdge]
   );
 
   const onConnect = useCallback(
-    (connection: Connection) => {
-      if (connection.source && connection.target) {
-        addEdge(connection.source, connection.target);
-      }
+    (c: Connection) => {
+      if (c.source && c.target) addEdge(c.source, c.target);
     },
     [addEdge]
+  );
+
+  const onNodeClick = useCallback(
+    (_: React.MouseEvent, node: RFNode) => {
+      setSelection(node.id, null);
+    },
+    [setSelection]
   );
 
   const onPaneClick = useCallback(() => {
@@ -188,43 +205,43 @@ export function GraphWorkspace() {
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
-          nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.2 }}
           proOptions={{ hideAttribution: true }}
-          deleteKeyCode={["Backspace", "Delete"]}
-          multiSelectionKeyCode="Shift"
-          minZoom={0.2}
-          maxZoom={2}
+          className="bg-transparent"
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#2a2f3a" />
-          <Controls showInteractive={false} position="bottom-left" />
+          <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#1f2937" />
+          <Controls className="!bg-[#12151c] !border-border !shadow-none" />
           <MiniMap
-            nodeStrokeWidth={3}
-            zoomable
-            pannable
-            maskColor="rgba(15, 17, 21, 0.75)"
-            position="bottom-right"
+            className="!bg-[#0c0e14] !border-border"
+            nodeColor={(n) => {
+              if (n.type === "agent") return "#3b82f6";
+              if (n.type === "tool") return "#10b981";
+              if (n.type === "skill") return "#8b5cf6";
+              return "#f59e0b";
+            }}
           />
           <Panel position="top-left" className="!m-2">
-            <div className="bg-[#161a22]/95 border border-border rounded-md px-2.5 py-1.5 backdrop-blur">
+            <div className="bg-[#12151c]/90 border border-border rounded-lg px-2 py-1.5 backdrop-blur">
               <GraphToolbar />
-              {running && (
-                <div className="mt-1 text-[10px] text-green-400 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                  live activity
-                </div>
-              )}
             </div>
           </Panel>
+          {running && (
+            <Panel position="top-left" className="!m-2 !mt-14">
+              <div className="text-[10px] text-green-400/90 flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                live activity
+              </div>
+            </Panel>
+          )}
         </ReactFlow>
       </div>
-
-      <div className="w-64 shrink-0 border-l border-border bg-panel">
+      <div className="w-[280px] shrink-0 border-l border-border bg-[#0f1115]">
         <NodeInspector />
       </div>
     </div>
