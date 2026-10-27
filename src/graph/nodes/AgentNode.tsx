@@ -2,11 +2,18 @@ import { memo } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
 
 export const AgentNode = memo(({ data }: NodeProps) => {
-  const d = data as { label: string; status?: string; model?: string; active?: boolean };
+  const d = data as {
+    label: string;
+    status?: string;
+    model?: string;
+    active?: boolean;
+    dimmed?: boolean;
+  };
   const active = !!d.active;
+  const dimmed = !!d.dimmed;
   return (
     <div
-      className={`min-w-[160px] rounded-lg border shadow-lg transition-all duration-300 ${
+      className={`min-w-[160px] rounded-lg border shadow-lg transition-all duration-300 ${dimmed ? "opacity-35 " : ""}${
         active
           ? "border-blue-400 bg-[#1e2a40] ring-2 ring-blue-500/40"
           : "border-blue-500/40 bg-[#1a2332]"

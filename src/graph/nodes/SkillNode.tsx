@@ -2,11 +2,12 @@ import { memo } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
 
 export const SkillNode = memo(({ data }: NodeProps) => {
-  const d = data as { label: string; description?: string; active?: boolean };
+  const d = data as { label: string; description?: string; active?: boolean; dimmed?: boolean };
   const active = !!d.active;
+  const dimmed = !!d.dimmed;
   return (
     <div
-      className={`min-w-[140px] rounded-md border shadow transition-all duration-300 ${
+      className={`min-w-[140px] rounded-md border shadow transition-all duration-300 ${dimmed ? "opacity-35 " : ""}${
         active
           ? "border-violet-400 bg-[#2a2040] ring-2 ring-violet-500/40"
           : "border-violet-500/30 bg-[#1c1828]"
@@ -18,7 +19,7 @@ export const SkillNode = memo(({ data }: NodeProps) => {
       <div className="px-2.5 py-1.5">
         <div className="text-xs font-medium text-gray-100">{d.label}</div>
         {d.description && (
-          <div className="text-[10px] text-gray-500 mt-0.5">{d.description}</div>
+          <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{d.description}</div>
         )}
       </div>
       <Handle type="target" position={Position.Left} className="!bg-violet-400 !w-2 !h-2" />

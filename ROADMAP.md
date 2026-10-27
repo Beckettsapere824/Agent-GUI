@@ -2,12 +2,11 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP13 | done | Shell → multi-session / kill |
-| CP14 | done | Session event filters; Tauri notify watcher |
-| CP15 | next | Session-scoped graph highlight; agent profile presets |
+| CP0–CP14 | done | Shell → filters / notify |
+| CP15 | done | Session-scoped graph highlight; agent profiles |
+| CP16 | next | Profile ↔ harness binding; command palette profiles |
 
-## CP14
+## CP15
 
-- Activity events carry `sessionId`
-- Runtime: **all** filter + click session chip to filter stream
-- Tauri: `watch_path_native` / `unwatch_path_native` via `notify` crate; frontend falls back to meta-poll
+- Session filter dims unrelated nodes/edges; live pulse only on session-touched nodes
+- Profiles: Coding / Review / Research / Blank (Graph toolbar)
