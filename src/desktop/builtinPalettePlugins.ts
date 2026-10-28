@@ -1,3 +1,4 @@
+import { ATTACH_PRESETS } from "../domain/attachPresets";
 import { AGENT_PROFILES, applyProfile } from "../domain/profiles";
 import {
   downloadText,
@@ -62,6 +63,28 @@ export function ensureBuiltinPalettePlugins() {
         run: () => {
           applyProfile(p.id);
           openAppById("main-graph");
+          close();
+        },
+      })),
+  });
+
+  registerPalettePlugin({
+    id: "attach",
+    contribute: ({ close }) =>
+      ATTACH_PRESETS.map((p) => ({
+        id: `attach-${p.id}`,
+        group: "Attach",
+        label: `Attach: ${p.name}`,
+        hint: p.description,
+        keywords: ["attach", "session", p.kind, p.id, p.name],
+        run: () => {
+          openAppById("runtime");
+          const store = useSessionStore.getState();
+          void (async () => {
+            if (p.kind === "demo") store.startDemo();
+            else if (p.kind === "tail" && p.path) await store.attachTail(p.path);
+            else if (p.kind === "stdio" && p.command) await store.attachStdio(p.command, p.cwd);
+          })();
           close();
         },
       })),

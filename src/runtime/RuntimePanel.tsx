@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ATTACH_PRESETS, type AttachPreset } from "../domain/attachPresets";
+import { applyProfile } from "../domain/profiles";
 import { useActivityStore } from "../store/activityStore";
 import { useSessionStore } from "../store/sessionStore";
+import { hintProfileFromEvents, type ProfileHint } from "./profileHints";
 import { parseTranscript } from "./transcript";
 import { SAMPLE_CLAUDE_CODE, SAMPLE_GENERIC } from "./samples";
 
@@ -19,6 +22,27 @@ const kindBadge: Record<string, string> = {
   think: "bg-violet-500/15 text-violet-400",
   error: "bg-red-500/15 text-red-400",
 };
+
+async function runAttachPreset(
+  preset: AttachPreset,
+  api: {
+    startDemo: () => void;
+    attachTail: (path: string) => Promise<void>;
+    attachStdio: (command: string, cwd?: string) => Promise<void>;
+  }
+) {
+  if (preset.kind === "demo") {
+    api.startDemo();
+    return;
+  }
+  if (preset.kind === "tail" && preset.path) {
+    await api.attachTail(preset.path);
+    return;
+  }
+  if (preset.kind === "stdio" && preset.command) {
+    await api.attachStdio(preset.command, preset.cwd);
+  }
+}
 
 export function RuntimePanel() {
   const allEvents = useActivityStore((s) => s.events);
@@ -55,46 +79,44 @@ export function RuntimePanel() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
-  const [parseInfo, setParseInfo] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [tailPath, setTailPath] = useState("sessions/demo.jsonl");
-  const [stdioCmd, setStdioCmd] = useState(
-    'echo {"kind":"tool","label":"read_file","detail":"src/main.rs"}'
-  );
+  const [stdioCmd, setStdioCmd] = useState("cargo check");
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [hintDismissed, setHintDismissed] = useState(false);
 
   useEffect(() => {
-    const id = setInterval(() => {
-      tick();
-      refresh();
-    }, 400);
+    refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = window.setInterval(() => tick(), 400);
     return () => clearInterval(id);
-  }, [tick, refresh]);
+  }, [running, tick]);
 
-  const onStop = () => {
-    stopRef.current?.();
-    stopRef.current = null;
-    stopActive();
-    setRunning(false);
-  };
+  const profileHint: ProfileHint | null = useMemo(() => {
+    if (hintDismissed || events.length < 3) return null;
+    return hintProfileFromEvents(events);
+  }, [events, hintDismissed]);
 
-  const onRunDemo = () => {
-    if (exclusive && running) return;
-    if (exclusive) onStop();
-    startDemo();
-  };
+  useEffect(() => {
+    setHintDismissed(false);
+  }, [filterSessionId, activeId]);
 
-  const ingestText = (text: string, replay: boolean) => {
+  const ingestText = (text: string, autoPlay: boolean) => {
     const result = parseTranscript(text);
-    setParseInfo(
-      `${result.source}: ${result.events.length} events` +
-        (result.warnings.length ? ` · ${result.warnings.length} warnings` : "")
+    loadEvents(
+      result.events.map((e) => ({
+        ...e,
+        id: `import-${Math.random().toString(36).slice(2, 9)}`,
+        ts: e.ts ?? Date.now(),
+      }))
     );
-    if (replay) {
-      if (running) return;
-      onStop();
-      stopRef.current = startReplay(result.events, 500);
-    } else {
-      loadEvents(result.events);
+    if (autoPlay && result.events.length) {
+      stopRef.current?.();
+      stopRef.current = startReplay(result.events, 280);
+      setRunning(true);
     }
   };
 
@@ -103,6 +125,17 @@ export function RuntimePanel() {
     setPasteText(text);
     setPasteOpen(true);
     ingestText(text, true);
+  };
+
+  const onPreset = async (preset: AttachPreset) => {
+    setAttachError(null);
+    try {
+      await runAttachPreset(preset, { startDemo, attachTail, attachStdio });
+      if (preset.path) setTailPath(preset.path);
+      if (preset.command) setStdioCmd(preset.command);
+    } catch (e) {
+      setAttachError(String(e));
+    }
   };
 
   const active = sessions.find((s) => s.id === activeId);
@@ -142,43 +175,61 @@ export function RuntimePanel() {
             </span>
           )}
           <button
-            className="h-6 px-2.5 rounded text-[11px] bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-40"
-            onClick={onRunDemo}
-            disabled={exclusive && running}
+            className="h-6 px-2 rounded text-[10px] bg-accent/20 text-accent hover:bg-accent/30"
+            onClick={() => startDemo()}
+            disabled={running}
           >
             Run demo
           </button>
           <button
-            className="h-6 px-2 rounded text-[11px] text-gray-400 hover:bg-white/5"
+            className="h-6 px-2 rounded text-[10px] text-gray-300 hover:bg-white/5 border border-border"
             onClick={() => setPasteOpen((v) => !v)}
           >
             Attach
           </button>
-          <button className="h-6 px-2 rounded text-[11px] text-gray-400 hover:bg-white/5" onClick={onStop}>
+          <button
+            className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
+            onClick={() => {
+              stopRef.current?.();
+              stopRef.current = null;
+              stopActive();
+              setRunning(false);
+            }}
+          >
             Stop
           </button>
           <button
-            className="h-6 px-2 rounded text-[11px] text-gray-500 hover:bg-white/5"
+            className="h-6 px-2 rounded text-[10px] text-gray-400 hover:bg-white/5"
             onClick={() => {
-              detachAll();
+              stopRef.current?.();
+              stopRef.current = null;
               clear();
-              setParseInfo(null);
+              detachAll();
             }}
           >
             Clear
           </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".jsonl,.json,.txt"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) void onFile(f);
+            }}
+          />
         </div>
       </div>
 
       {sessions.length > 0 && (
-        <div className="border-b border-border bg-[#0c0e14] px-2 py-1.5 flex flex-wrap gap-1.5 items-center">
-          <span className="text-[10px] text-gray-600 uppercase tracking-wide mr-1">Sessions</span>
+        <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 border-b border-border overflow-x-auto">
           <button
             type="button"
             className={`h-6 px-2 rounded text-[10px] border ${
               filterSessionId == null
                 ? "border-accent/40 bg-accent/10 text-accent"
-                : "border-border text-gray-500 hover:bg-white/5"
+                : "border-border text-gray-500"
             }`}
             onClick={() => setFilterSessionId(null)}
           >
@@ -224,6 +275,33 @@ export function RuntimePanel() {
         </div>
       )}
 
+      {profileHint && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-violet-500/5 text-[11px]">
+          <span className="text-violet-300">Profile hint</span>
+          <span className="text-gray-400">
+            → <span className="text-violet-200 font-medium">{profileHint.profileName}</span>
+            <span className="text-gray-600"> ({profileHint.confidence})</span>
+            {profileHint.reasons[0] ? (
+              <span className="text-gray-600"> · {profileHint.reasons[0]}</span>
+            ) : null}
+          </span>
+          <button
+            type="button"
+            className="h-6 px-2 rounded border border-violet-500/30 text-violet-300 hover:bg-violet-500/10"
+            onClick={() => applyProfile(profileHint.profileId)}
+          >
+            Apply
+          </button>
+          <button
+            type="button"
+            className="ml-auto text-gray-600 hover:text-gray-400"
+            onClick={() => setHintDismissed(true)}
+          >
+            dismiss
+          </button>
+        </div>
+      )}
+
       {pasteOpen && (
         <div className="border-b border-border bg-[#0f1115] p-2 space-y-2">
           <div className="flex flex-wrap items-center gap-3 text-[10px] text-gray-500">
@@ -244,24 +322,40 @@ export function RuntimePanel() {
               exclusive
             </label>
           </div>
+
+          <div className="flex flex-wrap gap-1">
+            <span className="text-[10px] text-gray-600 self-center mr-1">Presets</span>
+            {ATTACH_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                title={p.description}
+                className="h-6 px-2 rounded text-[10px] border border-border text-gray-300 hover:bg-white/5 hover:border-accent/40"
+                onClick={() => void onPreset(p)}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-wrap gap-1 items-center">
             <button
               className="h-6 px-2 rounded text-[10px] bg-white/5 text-gray-300 hover:bg-white/10"
               onClick={() => {
-                setPasteText(SAMPLE_GENERIC);
-                ingestText(SAMPLE_GENERIC, false);
+                setPasteText(SAMPLE_CLAUDE_CODE);
+                ingestText(SAMPLE_CLAUDE_CODE, true);
               }}
             >
-              Sample generic
+              Sample Claude
             </button>
             <button
               className="h-6 px-2 rounded text-[10px] bg-white/5 text-gray-300 hover:bg-white/10"
               onClick={() => {
-                setPasteText(SAMPLE_CLAUDE_CODE);
-                ingestText(SAMPLE_CLAUDE_CODE, false);
+                setPasteText(SAMPLE_GENERIC);
+                ingestText(SAMPLE_GENERIC, true);
               }}
             >
-              Sample Claude-code
+              Sample generic
             </button>
             <button
               className="h-6 px-2 rounded text-[10px] bg-white/5 text-gray-300 hover:bg-white/10"
@@ -269,109 +363,92 @@ export function RuntimePanel() {
             >
               Open file…
             </button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".jsonl,.json,.txt,text/plain"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onFile(f);
-                e.target.value = "";
-              }}
-            />
           </div>
-          <div className="flex flex-wrap gap-1 items-center">
+
+          <div className="flex gap-1 items-center">
             <input
-              className="h-6 flex-1 min-w-[120px] bg-[#0c0e14] border border-border rounded px-1.5 font-mono text-[10px] text-gray-300 outline-none focus:border-accent"
+              className="flex-1 h-7 bg-[#0c0e14] border border-border rounded px-2 text-[11px] text-gray-300 outline-none"
               value={tailPath}
               onChange={(e) => setTailPath(e.target.value)}
-              placeholder="jsonl path"
+              placeholder="path to .jsonl"
             />
             <button
-              className="h-6 px-2 rounded text-[10px] bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 disabled:opacity-40"
-              disabled={exclusive && running}
-              onClick={() => void attachTail(tailPath)}
+              className="h-7 px-2 rounded text-[10px] bg-white/5 text-gray-300"
+              onClick={() => void attachTail(tailPath).catch((e) => setAttachError(String(e)))}
             >
               Tail file
             </button>
           </div>
-          <div className="flex flex-wrap gap-1 items-center">
+          <div className="flex gap-1 items-center">
             <input
-              className="h-6 flex-1 min-w-[120px] bg-[#0c0e14] border border-border rounded px-1.5 font-mono text-[10px] text-gray-300 outline-none focus:border-accent"
+              className="flex-1 h-7 bg-[#0c0e14] border border-border rounded px-2 text-[11px] text-gray-300 outline-none font-mono"
               value={stdioCmd}
               onChange={(e) => setStdioCmd(e.target.value)}
-              placeholder="allowlisted command (stdout JSONL)"
+              placeholder="command"
             />
             <button
-              className="h-6 px-2 rounded text-[10px] bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 disabled:opacity-40"
-              disabled={(exclusive && running) || !stdioCmd.trim()}
-              onClick={() => void attachStdio(stdioCmd.trim())}
+              className="h-7 px-2 rounded text-[10px] bg-white/5 text-gray-300"
+              onClick={() =>
+                void attachStdio(stdioCmd.trim()).catch((e) => setAttachError(String(e)))
+              }
             >
               Stdio
             </button>
           </div>
           <textarea
-            className="w-full h-20 bg-[#0c0e14] border border-border rounded p-2 font-mono text-[11px] text-gray-200 outline-none focus:border-accent resize-y"
-            placeholder='{"kind":"tool","label":"read_file","detail":"src/main.rs"}'
+            className="w-full h-24 bg-[#0c0e14] border border-border rounded p-2 text-[11px] text-gray-300 font-mono outline-none"
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
+            placeholder="Paste JSONL transcript…"
           />
-          <div className="flex items-center gap-1.5">
+          <div className="flex gap-1">
             <button
-              className="h-6 px-2 rounded text-[11px] bg-white/5 text-gray-300 hover:bg-white/10"
+              className="h-6 px-2 rounded text-[10px] bg-white/5 text-gray-300"
               onClick={() => ingestText(pasteText, false)}
+              disabled={!pasteText.trim()}
             >
               Load
             </button>
             <button
-              className="h-6 px-2 rounded text-[11px] bg-accent/20 text-accent hover:bg-accent/30 disabled:opacity-40"
+              className="h-6 px-2 rounded text-[10px] bg-accent/20 text-accent"
               onClick={() => ingestText(pasteText, true)}
               disabled={running || !pasteText.trim()}
             >
               Replay
             </button>
-            {parseInfo && <span className="text-[10px] text-gray-500 ml-1">{parseInfo}</span>}
-            {active?.error && (
-              <span className="text-[10px] text-red-400 ml-1 truncate max-w-[40%]">{active.error}</span>
-            )}
           </div>
+          {attachError && <div className="text-[10px] text-red-400">{attachError}</div>}
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto font-mono text-[12px]">
-        {events.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-600 text-sm px-6 text-center gap-2">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {events.length === 0 ? (
+          <div className="p-6 text-center text-gray-600 text-xs space-y-1">
             <div>No events — Run demo, Attach, Tail, Stdio, or drop .jsonl</div>
-            <div className="text-[11px] text-gray-700">Sessions light matching graph nodes</div>
+            <div className="text-[10px]">Sessions light matching graph nodes</div>
           </div>
+        ) : (
+          <ul className="divide-y divide-border/40">
+            {events.map((e) => (
+              <li key={e.id} className="px-3 py-1.5 flex gap-2 items-start text-[11px]">
+                <span
+                  className={`shrink-0 mt-0.5 text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded ${kindBadge[e.kind] ?? "bg-white/5 text-gray-500"}`}
+                >
+                  {e.kind}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className={`${kindColor[e.kind] ?? "text-gray-300"} truncate`}>{e.label}</div>
+                  {e.detail && (
+                    <div className="text-gray-600 truncate font-mono text-[10px]">{e.detail}</div>
+                  )}
+                </div>
+                {e.nodeId && (
+                  <span className="text-[9px] text-gray-600 font-mono shrink-0">{e.nodeId}</span>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
-        <ul className="divide-y divide-border/60">
-          {events.map((e) => (
-            <li key={e.id} className="px-3 py-1.5 flex items-start gap-2 hover:bg-white/[0.02]">
-              <span className="text-gray-600 tabular-nums shrink-0 w-14">
-                {new Date(e.ts).toLocaleTimeString(undefined, {
-                  hour12: false,
-                  hour: "2-digit",
-                  minute: "2-digit",
-                  second: "2-digit",
-                })}
-              </span>
-              <span
-                className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-sans font-medium ${
-                  kindBadge[e.kind]
-                }`}
-              >
-                {e.kind}
-              </span>
-              <span className={kindColor[e.kind] ?? "text-gray-300"}>{e.label}</span>
-              {e.detail && <span className="text-gray-500 truncate">{e.detail}</span>}
-              {e.nodeId && (
-                <span className="ml-auto text-[10px] text-gray-600 shrink-0">{e.nodeId}</span>
-              )}
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   );

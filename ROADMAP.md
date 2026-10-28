@@ -2,18 +2,18 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP18 | done | Shell → layouts / status profile |
-| CP19 | done | Persist layout + profile in project snapshot |
-| CP20 | next | Session attach presets; transcript → profile hints |
+| CP0–CP19 | done | Shell → persist profile/layout |
+| CP20 | done | Attach presets; transcript → profile hints |
+| CP21 | next | Harness leaf ↔ graph node binding; live edge emphasis |
 
-## CP19
+## CP20
 
-- `ProjectSnapshot` carries optional `profileId` / `profileName` / `layoutId`
-- Save / load / export / import restore workspace chrome
-- Loading a snapshot with `layoutId` re-runs `applyLayout`
-- Desktop mounts with `loadLocal()` so last session returns
+- `ATTACH_PRESETS`: demo / tail / stdio recipes (Runtime Attach + Ctrl+K)
+- `hintProfileFromEvents`: scores coding / review / research / blank
+- Runtime banner: **Profile hint → Apply** when ≥3 events
 
 ```bash
 git pull && npm run dev
-# set Profile + Layout → Ctrl+S → reload page
+# Runtime → Run demo → see Profile hint → Apply
+# or Ctrl+K → Attach: …
 ```
