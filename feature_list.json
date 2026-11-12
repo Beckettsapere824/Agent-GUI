@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "description": "Structured feature list for Agent-GUI. One active feature at a time. Evidence required before status=done. Portable harness contract + product CPs.",
+  "features": [
+    {
+      "id": "H001",
+      "title": "Land portable agent-harness core in Agent-GUI",
+      "status": "done",
+      "priority": 1,
+      "depends_on": [],
+      "definition_of_done": [
+        "AGENT.md, MEMORY.md, feature_list.json, progress.md, session-handoff.md, runs.md, init.sh, audit-harness.sh, .grok/README.md exist",
+        "Mission and verification adapted for Agent-GUI (not agent-harness eval packs)",
+        "agent-harness upstream left unmodified"
+      ],
+      "evidence": "Committed to Agent-GUI main on 2026-11-12",
+      "notes": "Copy surface only; no eval/ or work/ from meta-repo."
+    },
+    {
+      "id": "CP0-20",
+      "title": "Agent OS shell through CP20",
+      "status": "done",
+      "priority": 2,
+      "depends_on": [],
+      "definition_of_done": [
+        "Desktop shell, graph, harness panel, runtime attach, profiles/layouts, palette, persistence, attach presets, profile hints",
+        "Documented in ROADMAP.md"
+      ],
+      "evidence": "ROADMAP CP0–CP20 marked done; code on main prior to harness transplant",
+      "notes": "Historical product arc."
+    },
+    {
+      "id": "CP21",
+      "title": "Harness leaf ↔ graph node binding + live edge emphasis",
+      "status": "todo",
+      "priority": 3,
+      "depends_on": ["H001", "CP0-20"],
+      "definition_of_done": [
+        "Selectable mapping between harness leaves/skills and graph nodes",
+        "Runtime activity emphasizes related graph edges",
+        "Smoke via npm run build + manual Runtime demo"
+      ],
+      "evidence": "",
+      "notes": "Next product checkpoint after harness transplant."
+    },
+    {
+      "id": "H002",
+      "title": "init.sh project verification (typecheck/build)",
+      "status": "todo",
+      "priority": 4,
+      "depends_on": ["H001"],
+      "definition_of_done": [
+        "./init.sh runs npm install (if needed) and npm run build when package.json present",
+        "Fails non-zero on build error"
+      ],
+      "evidence": "",
+      "notes": "init.sh already contains hooks; confirm green in a clean clone."
+    }
+  ]
+}
