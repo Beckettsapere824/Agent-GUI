@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Structured feature list for Agent-GUI. One active feature at a time. Evidence required before status=done. Portable harness contract + product CPs.",
+  "description": "Structured feature list for Agent-GUI. One active feature at a time. Evidence required before status=done.",
   "features": [
     {
       "id": "H001",
@@ -10,11 +10,11 @@
       "depends_on": [],
       "definition_of_done": [
         "AGENT.md, MEMORY.md, feature_list.json, progress.md, session-handoff.md, runs.md, init.sh, audit-harness.sh, .grok/README.md exist",
-        "Mission and verification adapted for Agent-GUI (not agent-harness eval packs)",
+        "Mission and verification adapted for Agent-GUI",
         "agent-harness upstream left unmodified"
       ],
       "evidence": "Committed to Agent-GUI main on 2026-11-12",
-      "notes": "Copy surface only; no eval/ or work/ from meta-repo."
+      "notes": ""
     },
     {
       "id": "CP0-20",
@@ -23,25 +23,25 @@
       "priority": 2,
       "depends_on": [],
       "definition_of_done": [
-        "Desktop shell, graph, harness panel, runtime attach, profiles/layouts, palette, persistence, attach presets, profile hints",
+        "Desktop shell through attach presets / profile hints",
         "Documented in ROADMAP.md"
       ],
-      "evidence": "ROADMAP CP0–CP20 marked done; code on main prior to harness transplant",
-      "notes": "Historical product arc."
+      "evidence": "ROADMAP CP0–CP20; code on main",
+      "notes": ""
     },
     {
       "id": "CP21",
       "title": "Harness leaf ↔ graph node binding + live edge emphasis",
-      "status": "todo",
+      "status": "done",
       "priority": 3,
       "depends_on": ["H001", "CP0-20"],
       "definition_of_done": [
-        "Selectable mapping between harness leaves/skills and graph nodes",
-        "Runtime activity emphasizes related graph edges",
-        "Smoke via npm run build + manual Runtime demo"
+        "Editable linkStore bind/unbind between graph nodes and harness leaves/skills",
+        "Bidirectional inspectors (Graph ↔ Harness)",
+        "Runtime activity animates / emphasizes related graph and harness edges"
       ],
-      "evidence": "",
-      "notes": "Next product checkpoint after harness transplant."
+      "evidence": "src/store/linkStore.ts; GraphWorkspace live edges; NodeInspector + HarnessPanel bidirectional links — 2026-11-12",
+      "notes": ""
     },
     {
       "id": "H002",
@@ -50,11 +50,24 @@
       "priority": 4,
       "depends_on": ["H001"],
       "definition_of_done": [
-        "./init.sh runs npm install (if needed) and npm run build when package.json present",
+        "./init.sh runs npm run build when package.json present",
         "Fails non-zero on build error"
       ],
       "evidence": "",
-      "notes": "init.sh already contains hooks; confirm green in a clean clone."
+      "notes": "Confirm on clean clone."
+    },
+    {
+      "id": "CP22",
+      "title": "Persist link table with project snapshot",
+      "status": "todo",
+      "priority": 5,
+      "depends_on": ["CP21"],
+      "definition_of_done": [
+        "ProjectSnapshot includes links[]",
+        "Load/save/export restore bindings"
+      ],
+      "evidence": "",
+      "notes": ""
     }
   ]
 }

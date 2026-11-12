@@ -2,18 +2,18 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP19 | done | Shell → persist profile/layout |
-| CP20 | done | Attach presets; transcript → profile hints |
-| CP21 | next | Harness leaf ↔ graph node binding; live edge emphasis |
+| CP0–CP20 | done | Shell → attach presets / profile hints |
+| CP21 | done | Harness ↔ graph links; live edge emphasis |
+| CP22 | next | Persist link table in project snapshot |
 
-## CP20
+## CP21
 
-- `ATTACH_PRESETS`: demo / tail / stdio recipes (Runtime Attach + Ctrl+K)
-- `hintProfileFromEvents`: scores coding / review / research / blank
-- Runtime banner: **Profile hint → Apply** when ≥3 events
+- `useLinkStore` — bind / unbind / replace (seeded from `sampleLinks`)
+- Graph inspector: bind harness leaf/skill; jump to Harness
+- Harness inspector: list graph links; jump to Graph
+- Active runtime nodes → amber animated edges (graph + harness)
 
 ```bash
 git pull && npm run dev
-# Runtime → Run demo → see Profile hint → Apply
-# or Ctrl+K → Attach: …
+# Select tool/skill → Bind harness… · Run demo → watch edges pulse
 ```

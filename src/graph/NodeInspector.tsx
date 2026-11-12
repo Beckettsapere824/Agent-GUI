@@ -1,6 +1,7 @@
+import { useMemo, useState } from "react";
 import { useGraphStore } from "../store/graphStore";
-import { harnessIdsForGraph } from "../domain/links";
 import { useHarnessStore } from "../store/harnessStore";
+import { useLinkStore } from "../store/linkStore";
 import { useOSStore } from "../store/osStore";
 
 export function NodeInspector() {
@@ -12,6 +13,29 @@ export function NodeInspector() {
   const harnessModel = useHarnessStore((s) => s.model);
   const selectHarness = useHarnessStore((s) => s.select);
   const openWindow = useOSStore((s) => s.openWindow);
+  const links = useLinkStore((s) => s.links);
+  const bind = useLinkStore((s) => s.bind);
+  const unbind = useLinkStore((s) => s.unbind);
+  const [bindTarget, setBindTarget] = useState("");
+
+  const linked = useMemo(() => {
+    if (!node) return [];
+    return links
+      .filter((l) => l.graphNodeId === node.id)
+      .map((l) => ({
+        link: l,
+        harness: harnessModel.nodes[l.harnessNodeId],
+      }))
+      .filter((x) => x.harness);
+  }, [node, links, harnessModel]);
+
+  const bindable = useMemo(() => {
+    if (!node) return [];
+    const taken = new Set(linked.map((x) => x.harness!.id));
+    return Object.values(harnessModel.nodes).filter(
+      (h) => (h.kind === "leaf" || h.kind === "skill" || h.kind === "root") && !taken.has(h.id)
+    );
+  }, [node, harnessModel, linked]);
 
   if (!node) {
     return (
@@ -22,9 +46,6 @@ export function NodeInspector() {
   }
 
   const d = node.data;
-  const linked = harnessIdsForGraph(node.id)
-    .map((id) => harnessModel.nodes[id])
-    .filter(Boolean);
 
   return (
     <div className="h-full flex flex-col text-xs">
@@ -96,15 +117,20 @@ export function NodeInspector() {
           </Field>
         )}
 
-        {linked.length > 0 && (
-          <div className="pt-2 border-t border-border space-y-1.5">
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Harness links</div>
-            {linked.map((h) => (
+        <div className="pt-2 border-t border-border space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Harness links</div>
+          {linked.length === 0 && (
+            <div className="text-gray-600 text-[11px]">No harness binding yet</div>
+          )}
+          {linked.map(({ link, harness: h }) => (
+            <div
+              key={`${link.graphNodeId}-${link.harnessNodeId}`}
+              className="flex gap-1 items-stretch"
+            >
               <button
-                key={h.id}
-                className="w-full text-left px-2 py-1.5 rounded border border-border bg-[#0f1115] hover:border-sky-500/40"
+                className="flex-1 text-left px-2 py-1.5 rounded border border-border bg-[#0f1115] hover:border-sky-500/40"
                 onClick={() => {
-                  selectHarness(h.id);
+                  selectHarness(h!.id);
                   openWindow({
                     id: "harness",
                     title: "Harness",
@@ -116,13 +142,49 @@ export function NodeInspector() {
                   });
                 }}
               >
-                <div className="text-[10px] text-sky-400/90 uppercase">{h.kind}</div>
-                <div className="text-gray-200">{h.name}</div>
-                {h.path && <div className="font-mono text-[10px] text-gray-500">{h.path}</div>}
+                <div className="text-[10px] text-sky-400/90 uppercase">
+                  {h!.kind} · {link.relation}
+                </div>
+                <div className="text-gray-200">{h!.name}</div>
+                {h!.path && <div className="font-mono text-[10px] text-gray-500">{h!.path}</div>}
               </button>
-            ))}
-          </div>
-        )}
+              <button
+                className="px-2 rounded border border-border text-gray-500 hover:text-red-400 hover:border-red-500/40"
+                title="Unbind"
+                onClick={() => unbind(node.id, h!.id)}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {bindable.length > 0 && (
+            <div className="flex gap-1 pt-1">
+              <select
+                className="flex-1 h-7 bg-[#0f1115] border border-border rounded px-1 text-[11px] text-gray-300"
+                value={bindTarget}
+                onChange={(e) => setBindTarget(e.target.value)}
+              >
+                <option value="">Bind harness…</option>
+                {bindable.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.kind}: {h.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="h-7 px-2 rounded text-[10px] bg-sky-500/15 text-sky-300 border border-sky-500/30 disabled:opacity-40"
+                disabled={!bindTarget}
+                onClick={() => {
+                  if (!bindTarget) return;
+                  bind(node.id, bindTarget, node.kind === "tool" ? "exposes" : "implements");
+                  setBindTarget("");
+                }}
+              >
+                Bind
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="pt-2 border-t border-border">
           <button

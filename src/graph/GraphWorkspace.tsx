@@ -57,7 +57,6 @@ export function GraphWorkspace() {
   const filterSessionId = useActivityStore((s) => s.filterSessionId);
   const activityEvents = useActivityStore((s) => s.events);
 
-  /** Nodes touched by the filtered session (or all when filter is null). */
   const sessionNodeIds = useMemo(() => {
     if (!filterSessionId) return null as Set<string> | null;
     const set = new Set<string>();
@@ -106,16 +105,22 @@ export function GraphWorkspace() {
     setEdges(
       flowEdges.map((e) => {
         const kind = (e.data as { kind?: string } | undefined)?.kind ?? "uses";
-        const color = edgeStroke[kind] ?? "#3b82f6";
+        const baseColor = edgeStroke[kind] ?? "#3b82f6";
         const related =
           !sessionNodeIds ||
           sessionNodeIds.has(e.source) ||
           sessionNodeIds.has(e.target);
+        const srcLive = !!activeNodeIds[e.source];
+        const tgtLive = !!activeNodeIds[e.target];
+        const liveEdge = srcLive || tgtLive;
+        const color = liveEdge ? "#fbbf24" : baseColor;
         return {
           ...e,
+          animated: liveEdge,
           style: {
             stroke: color,
-            opacity: related ? 1 : 0.25,
+            strokeWidth: liveEdge ? 2.75 : related ? 1.5 : 1,
+            opacity: related ? 1 : 0.22,
           },
           markerEnd: { type: MarkerType.ArrowClosed, color },
           type: "smoothstep",
@@ -235,7 +240,7 @@ export function GraphWorkspace() {
             <Panel position="top-left" className="!m-2 !mt-14">
               <div className="text-[10px] text-green-400/90 flex items-center gap-1.5 bg-black/40 px-2 py-1 rounded">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                live activity
+                live activity · edges pulse on active nodes
               </div>
             </Panel>
           )}
