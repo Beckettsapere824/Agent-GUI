@@ -1,17 +1,16 @@
 # .grok / agent harness
 
-This directory and the root harness files (`AGENT.md`, `MEMORY.md`, `feature_list.json`, `progress.md`, `session-handoff.md`, `runs.md`, `init.sh`) are the **persistent harness** so any agent—including Grok with GitHub connector—can continue work without the original chat.
+Root harness files + `docs/` + `tools/assert_no_stub.sh` are the **persistent operating harness** for Agent-GUI.
 
-Source pattern: [agent-harness](https://github.com/Beckettsapere824/agent-harness) portable core (copied into **Agent-GUI** only).
+Pattern source: [agent-harness](https://github.com/Beckettsapere824/agent-harness) (read-only when transplanting).
 
 | File | Purpose |
 |------|---------|
-| `../AGENT.md` | Operating contract, startup workflow, invariants |
-| `../MEMORY.md` | Status, pitfalls, log |
-| `../feature_list.json` | Structured scope + evidence |
-| `../progress.md` | Live continuity |
-| `../session-handoff.md` | Explicit handoff |
-| `../runs.md` | Session duration log |
-| `../init.sh` | Startup + verification |
-
-Optional future: model-specific notes or skill pointers. Prefer keeping the root AGENT.md short and loading details on demand.
+| `../AGENT.md` | Operating contract |
+| `../MEMORY.md` | Status / log |
+| `../feature_list.json` | Scope + evidence |
+| `../progress.md` | Continuity (**Next exact**) |
+| `../session-handoff.md` | Handoff |
+| `../runs.md` | Duration log |
+| `../docs/HARNESS_LESSONS.md` | Failure ledger |
+| `../init.sh` | Startup + `npm run build` |

@@ -1,6 +1,9 @@
 import type { DomainGraph, HarnessModel } from "./types";
+import type { GraphHarnessLink } from "./links";
+import { sampleLinks } from "./links";
 import { useGraphStore } from "../store/graphStore";
 import { useHarnessStore } from "../store/harnessStore";
+import { useLinkStore } from "../store/linkStore";
 import { useProjectStore } from "../store/projectStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 
@@ -17,6 +20,7 @@ export interface ProfilePairSnapshot {
   profileId?: string | null;
   profileName?: string | null;
   layoutId?: string | null;
+  links?: GraphHarnessLink[];
 }
 
 export function exportProfilePair(name?: string, description?: string): string {
@@ -34,6 +38,7 @@ export function exportProfilePair(name?: string, description?: string): string {
     profileId: ws.activeProfileId,
     profileName: ws.activeProfileName,
     layoutId: ws.activeLayoutId,
+    links: useLinkStore.getState().links.map((l) => ({ ...l })),
   };
   return JSON.stringify(snap, null, 2);
 }
@@ -45,6 +50,11 @@ export function importProfilePair(raw: string): boolean {
     if (!snap.graph || !snap.harness) return false;
     useGraphStore.getState().replaceGraph(snap.graph);
     useHarnessStore.getState().replace(snap.harness);
+    if (Array.isArray(snap.links)) {
+      useLinkStore.getState().replace(snap.links.map((l) => ({ ...l })));
+    } else {
+      useLinkStore.getState().replace(sampleLinks.map((l) => ({ ...l })));
+    }
     useWorkspaceStore
       .getState()
       .setProfile(snap.profileId ?? null, snap.profileName ?? snap.name ?? null);

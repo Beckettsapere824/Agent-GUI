@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# audit-harness.sh — Minimal zero-dependency audit for the portable harness
-# Usage: ./audit-harness.sh [path/to/repo]
-# Exit 0 if all required checks pass; exit 1 otherwise.
+# audit-harness.sh — Structural audit for Agent-GUI portable harness
 set -euo pipefail
 
 REPO="${1:-.}"
@@ -22,33 +20,24 @@ check() {
   fi
 }
 
-echo "== agent-harness audit (Agent-GUI) =="
+echo "== Agent-GUI harness audit =="
 echo "Repo: $(pwd)"
 echo
 
 echo "Core files"
 for f in AGENT.md MEMORY.md feature_list.json progress.md init.sh; do
-  if [[ -f "$f" ]]; then
-    check "$f present" "pass"
-  else
-    check "$f present" "fail"
-  fi
+  if [[ -f "$f" ]]; then check "$f present" "pass"; else check "$f present" "fail"; fi
 done
 
-for f in session-handoff.md runs.md README.md .grok/README.md; do
-  if [[ -f "$f" ]]; then
-    check "$f present (recommended)" "pass"
-  else
-    check "$f present (recommended)" "fail"
-  fi
+for f in session-handoff.md runs.md README.md .grok/README.md docs/HARNESS_LESSONS.md docs/HARNESS_PUSH_GATE.md docs/EXIT_CRITERIA.md tools/assert_no_stub.sh; do
+  if [[ -f "$f" ]]; then check "$f present (recommended)" "pass"; else check "$f present (recommended)" "fail"; fi
 done
 
 echo
 echo "Permissions"
-if [[ -x init.sh ]]; then
-  check "init.sh is executable" "pass"
-else
-  check "init.sh is executable" "fail"
+if [[ -x init.sh ]]; then check "init.sh is executable" "pass"; else check "init.sh is executable" "fail"; fi
+if [[ -f tools/assert_no_stub.sh ]]; then
+  if [[ -x tools/assert_no_stub.sh ]]; then check "tools/assert_no_stub.sh is executable" "pass"; else check "tools/assert_no_stub.sh is executable" "fail"; fi
 fi
 
 echo
@@ -56,33 +45,34 @@ echo "feature_list.json"
 if command -v python3 >/dev/null 2>&1; then
   if python3 -c "
 import json, sys
-try:
-    data = json.load(open('feature_list.json'))
-except Exception as e:
-    print(e)
-    sys.exit(1)
-if not isinstance(data, dict):
-    print('root is not an object')
-    sys.exit(1)
-if 'features' not in data or not isinstance(data['features'], list):
-    print('missing features array')
-    sys.exit(1)
+data = json.load(open('feature_list.json'))
+assert isinstance(data, dict) and isinstance(data.get('features'), list)
 for i, f in enumerate(data['features']):
     for key in ('id', 'title', 'status', 'definition_of_done'):
-        if key not in f:
-            print(f'feature[{i}] missing {key}')
-            sys.exit(1)
+        assert key in f, f'missing {key} at {i}'
 " 2>/dev/null; then
-    check "valid JSON + required fields (id/title/status/definition_of_done)" "pass"
+    check "valid JSON + required fields" "pass"
   else
-    check "valid JSON + required fields (id/title/status/definition_of_done)" "fail"
+    check "valid JSON + required fields" "fail"
   fi
 else
-  if [[ -s feature_list.json ]]; then
-    check "feature_list.json non-empty (python3 not available for deeper check)" "pass"
-  else
-    check "feature_list.json non-empty" "fail"
-  fi
+  if [[ -s feature_list.json ]]; then check "feature_list.json non-empty" "pass"; else check "feature_list.json non-empty" "fail"; fi
+fi
+
+echo
+echo "progress.md"
+if [[ -f progress.md ]] && grep -qiE 'next exact|\*\*Next exact\*\*|Next step' progress.md; then
+  check "progress.md mentions Next exact / next step" "pass"
+else
+  check "progress.md mentions Next exact / next step" "fail"
+fi
+
+echo
+echo "session-handoff.md"
+if [[ -f session-handoff.md ]] && grep -qiE 'Timing|Resume checklist|Known failure' session-handoff.md; then
+  check "session-handoff has Timing / Resume / failure modes" "pass"
+else
+  check "session-handoff has Timing / Resume / failure modes" "fail"
 fi
 
 echo

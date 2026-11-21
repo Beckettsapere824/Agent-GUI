@@ -1,21 +1,23 @@
 # progress.md — Session Continuity
 
-Update at the end of every working session/dialog. Keep entries short and actionable.
-
 ---
 
 ## Current
 
-- **Active feature:** CP21 complete; next candidate **CP22** (persist link table).
-- **State:** Editable harness↔graph links + live edge emphasis on main.
-- **Next step:** Mark CP22 in_progress; extend ProjectSnapshot with `links`; restore on load.
+- **Active feature:** CP22 / H003 complete this dialog.
+- **State:** Links persist in project snapshot; upstream harness hardening docs synced (read-only).
+- **Next exact:** Mark **CP23** `in_progress` in `feature_list.json`; document Tauri native FS watch vs web poll in README; smoke `npm run dev` web path unchanged.
 - **Blockers:** None.
 
 ---
 
 ## Recent
 
+### 2026-11-21
+
+- Re-read agent-harness (read-only); synced docs + assert_no_stub.
+- CP22: `ProjectSnapshot.links` + profile pair links.
+
 ### 2026-11-12
 
-- CP21: `linkStore`, bind/unbind in inspectors, amber animated edges when endpoints are active.
-- H001: portable harness core transplanted.
+- H001 transplant; CP21 linkStore + live edges.

@@ -2,7 +2,10 @@ import { create } from "zustand";
 import { useGraphStore } from "./graphStore";
 import { useHarnessStore } from "./harnessStore";
 import { useWorkspaceStore } from "./workspaceStore";
+import { useLinkStore } from "./linkStore";
 import type { DomainGraph, HarnessModel } from "../domain/types";
+import type { GraphHarnessLink } from "../domain/links";
+import { sampleLinks } from "../domain/links";
 import { sampleDomainGraph } from "../domain/sampleGraph";
 import { sampleHarness } from "../domain/sampleHarness";
 
@@ -20,6 +23,8 @@ export interface ProjectSnapshot {
   profileId?: string | null;
   profileName?: string | null;
   layoutId?: string | null;
+  /** Graph ↔ harness bindings (CP22). Older saves omit → seed sampleLinks. */
+  links?: GraphHarnessLink[];
 }
 
 export interface ProjectMeta {
@@ -50,6 +55,10 @@ function newId() {
   return `proj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function cloneSampleLinks(): GraphHarnessLink[] {
+  return sampleLinks.map((l) => ({ ...l }));
+}
+
 function buildSnapshot(id: string, name: string): ProjectSnapshot {
   const ws = useWorkspaceStore.getState();
   return {
@@ -62,6 +71,7 @@ function buildSnapshot(id: string, name: string): ProjectSnapshot {
     profileId: ws.activeProfileId,
     profileName: ws.activeProfileName,
     layoutId: ws.activeLayoutId,
+    links: useLinkStore.getState().links.map((l) => ({ ...l })),
   };
 }
 
@@ -69,16 +79,24 @@ function applyWorkspaceFromSnap(snap: ProjectSnapshot) {
   useWorkspaceStore.getState().setProfile(snap.profileId ?? null, snap.profileName ?? null);
   useWorkspaceStore.getState().setLayout(snap.layoutId ?? null);
   if (snap.layoutId) {
-    // lazy to avoid circular import at module top
     void import("../desktop/layouts").then(({ applyLayout }) => {
       applyLayout(snap.layoutId!);
     });
   }
 }
 
+function applyLinksFromSnap(snap: ProjectSnapshot) {
+  if (Array.isArray(snap.links)) {
+    useLinkStore.getState().replace(snap.links.map((l) => ({ ...l })));
+  } else {
+    useLinkStore.getState().replace(cloneSampleLinks());
+  }
+}
+
 function applySnap(snap: ProjectSnapshot) {
   useGraphStore.getState().replaceGraph(snap.graph);
   useHarnessStore.getState().replace(snap.harness);
+  applyLinksFromSnap(snap);
   applyWorkspaceFromSnap(snap);
 }
 
@@ -167,6 +185,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const id = newId();
     useGraphStore.getState().replaceGraph(structuredClone(sampleDomainGraph));
     useHarnessStore.getState().replace(structuredClone(sampleHarness));
+    useLinkStore.getState().replace(cloneSampleLinks());
     useWorkspaceStore.getState().setProfile(null, null);
     useWorkspaceStore.getState().setLayout(null);
     set({ id, name, lastSavedAt: null });

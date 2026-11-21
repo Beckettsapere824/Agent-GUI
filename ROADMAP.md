@@ -2,18 +2,17 @@
 
 | CP | Status | Scope |
 |----|--------|--------|
-| CP0–CP20 | done | Shell → attach presets / profile hints |
-| CP21 | done | Harness ↔ graph links; live edge emphasis |
-| CP22 | next | Persist link table in project snapshot |
+| CP0–CP21 | done | Shell → links + live edges |
+| CP22 | done | Persist link table in project snapshot |
+| CP23 | next | Tauri hardening (native watch / packaging notes) |
 
-## CP21
+## CP22
 
-- `useLinkStore` — bind / unbind / replace (seeded from `sampleLinks`)
-- Graph inspector: bind harness leaf/skill; jump to Harness
-- Harness inspector: list graph links; jump to Graph
-- Active runtime nodes → amber animated edges (graph + harness)
+- `ProjectSnapshot.links` saved/loaded with project
+- Profile pair export/import carries `links`
+- Missing `links` on old saves → seed `sampleLinks`
 
 ```bash
 git pull && npm run dev
-# Select tool/skill → Bind harness… · Run demo → watch edges pulse
+# Bind a node → Ctrl+S → reload → bindings remain
 ```
